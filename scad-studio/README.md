@@ -7,6 +7,56 @@ the browser, spin the model around on a virtual print bed, and export an STL rea
 Everything runs client-side: the actual OpenSCAD engine is compiled to WebAssembly and executes in
 a Web Worker, so nothing is uploaded anywhere.
 
+## Designs
+
+`designs/` holds finished `.scad` designs. They are **not** bundled into the app —
+nothing under `designs/` is built — but the dev server serves and watches them, so
+pick one from **Designs…** and the editor follows it: change the file on disk in
+any editor and the new text appears here, no reload. It does *not* re-render on its
+own; press Render when you want to see it. If the editor has edits of its own when
+the file changes, you get the choice rather than losing them — and only then, since
+what is remembered across a reload is a flag saying whether you had edited, not a
+second copy of the text to compare against.
+
+`name-ornament.scad` is a personalised Christmas bauble: set `name`, `diameter` and
+the rest at the top of the file and hit Render.
+
+A design like that has to come off the bed in **one connected piece**, and neither
+loose letters nor a floating accent survive printing. What keeps it whole:
+
+- a joined-up script face does most of it on its own. At its own spacing the
+  lowercase letters of the script faces here already run into each other; the seams
+  that stay open are the one after a capital, where a script lifts the pen, and a space,
+  which has no ink at all. Squeezing all the letters together to close those two is
+  what the design used to do, and it drives one letter's tail through the next;
+- so a capital is *tucked* instead — the rest of the word slides under it, the way
+  a hand writes it — and what is left of the seam is closed with a small fillet at
+  the point where the two letters come closest. How far to tuck is per capital and
+  measured, not guessed: sixteen of the twenty-six need nothing and are left where
+  the face puts them, while a "T" needs a quarter of the text size. One fixed tuck
+  for all of them jams the second letter into the bowl of a "C" and still does not
+  reach for the "T". A space gets a short stroke, across the space only;
+- `connect = "tie"` carries the name to the band by dragging the outermost sliver
+  of ink of the end letters out to it. Sweeping a stroke along the baseline from
+  inside the first letter also works and is what this used to do: between the two
+  ends it laid a straight rule the full width of the disc, under the whole name;
+- accents and the dots on i/j are separate contours, so legs cut from the mark
+  itself pin each one to the letter underneath;
+- every snowflake is turned so one arm points at the ring, and that arm is
+  extended until it definitely bites into the band;
+- snowflake arms are measured against the lettering as they are drawn and stop
+  short of it. Cutting them to shape afterwards was the obvious approach and it is
+  a trap: slicing an arm mid-branch leaves stubs attached to nothing, which is the
+  very failure being designed out.
+
+None of that is a *proof*, so after every render the app counts the separate solids
+in the mesh and shows **One piece** or **N loose pieces** in the toolbar. That check
+works on any design, not just this one — and it is how the default face was chosen.
+Run twelve real names through this design and count: Norican and Great Vibes manage
+twelve out of twelve, Dancing Script eleven, Lobster ten, Pacifico two, Open Sans
+none. Norican is the default because it is the one that does it at its own weight
+rather than by being fattened until the letters merge.
+
 ## How it works
 
 - **Editor** — Monaco (the VS Code editor) with a small custom OpenSCAD language definition
@@ -17,6 +67,17 @@ a Web Worker, so nothing is uploaded anywhere.
   It compiles your `.scad` source straight to an STL.
 - **Viewer** — a Three.js scene (`src/viewer/ModelViewer.tsx`) with a 220mm print-bed grid, so you
   can see roughly how a design will sit on the plate.
+- **Text** — the WASM engine ships without any fonts, so the worker mounts the ones in
+  `public/fonts/` into its virtual filesystem along with a `fonts.conf` before each render.
+  It also enables OpenSCAD's `textmetrics()`, which is how a design can measure its own
+  lettering and scale it to fit.
+- **Printability** — `src/openscad/meshCheck.ts` runs union-find over the STL's shared
+  vertices to count disconnected solids.
+- **Following a file** — `vite/scadDesigns.ts` is a dev-server plugin that lists `designs/`,
+  serves a design on request, and pushes the new text down Vite's own hot-update socket when
+  one changes on disk. `src/designs.ts` is the browser side of it. None of it exists in a
+  production build, where there is no server to watch anything and the app simply has no
+  designs folder.
 
 ## Getting started
 
@@ -36,6 +97,8 @@ git-ignored since it's a large prebuilt binary you can always re-fetch.
 
 - The OpenSCAD engine itself is GPL-licensed; this app just loads and runs it. Designs you create
   with it are yours — using GPL tooling to make something doesn't make the something GPL.
+- The bundled fonts (Norican, Pacifico, Dancing Script, Great Vibes, Lobster, Open Sans) are
+  OFL/Apache licensed; their license texts sit next to them in `public/fonts/`.
 - The bundled language support covers common OpenSCAD keywords and built-in modules/functions; it's
   not a full language server, so there's no autocomplete or inline error squiggles yet — errors
   show up in the console panel after a render.
