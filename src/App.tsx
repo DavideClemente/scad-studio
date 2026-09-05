@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { CodeEditor } from './editor/CodeEditor';
 import { ModelViewer } from './viewer/ModelViewer';
 import { Toolbar } from './components/Toolbar';
@@ -28,6 +29,9 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastRenderMs, setLastRenderMs] = useState<number | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
+  const [editorWidthPct, setEditorWidthPct] = useState(55);
+  const [isResizing, setIsResizing] = useState(false);
+  const workspaceRef = useRef<HTMLDivElement>(null);
 
   // Created once for the lifetime of the page (not disposed on unmount): App
   // never unmounts in practice, and disposing from a useEffect cleanup would
@@ -101,6 +105,27 @@ export default function App() {
 
   const stlAvailable = useMemo(() => stl != null, [stl]);
 
+  const handleDividerMouseDown = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+    event.preventDefault();
+    setIsResizing(true);
+
+    const rect = workspace.getBoundingClientRect();
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const pct = ((moveEvent.clientX - rect.left) / rect.width) * 100;
+      setEditorWidthPct(Math.min(80, Math.max(20, pct)));
+    };
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, []);
+
   return (
     <div className="app">
       <Toolbar
@@ -114,10 +139,11 @@ export default function App() {
         onDownloadStl={handleDownloadStl}
         onSelectExample={handleSelectExample}
       />
-      <main className="workspace">
-        <div className="pane pane-editor">
+      <main className={`workspace ${isResizing ? 'is-resizing' : ''}`} ref={workspaceRef}>
+        <div className="pane pane-editor" style={{ width: `${editorWidthPct}%` }}>
           <CodeEditor value={source} onChange={setSource} onRenderShortcut={handleRender} />
         </div>
+        <div className="divider" onMouseDown={handleDividerMouseDown} />
         <div className="pane pane-viewer">
           <ModelViewer stl={stl} />
         </div>

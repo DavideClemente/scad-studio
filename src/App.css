@@ -90,13 +90,39 @@
 }
 
 .pane-editor {
-  flex: 1 1 55%;
-  border-right: 1px solid var(--border);
+  flex: 0 0 auto;
 }
 
 .pane-viewer {
-  flex: 1 1 45%;
+  flex: 1 1 auto;
   display: flex;
+}
+
+.divider {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  background: var(--border);
+  position: relative;
+}
+
+.divider::after {
+  content: '';
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.divider:hover,
+.is-resizing .divider {
+  background: var(--accent);
+}
+
+.is-resizing {
+  cursor: col-resize;
+}
+
+.is-resizing .pane-editor,
+.is-resizing .pane-viewer {
+  pointer-events: none;
 }
 
 .model-viewer {
