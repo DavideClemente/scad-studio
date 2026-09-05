@@ -79,6 +79,38 @@ rather than by being fattened until the letters merge.
   production build, where there is no server to watch anything and the app simply has no
   designs folder.
 
+## Hosting it
+
+```sh
+docker compose up -d --build      # http://127.0.0.1:8080
+```
+
+The image is a two-stage build: node fetches the engine, builds the app and
+pre-compresses everything, then Caddy serves `dist/` and nothing else. The engine
+download sits in its own layer ahead of the source copy, so editing a file does not
+re-fetch 10MB of WebAssembly.
+
+Nothing is computed server-side — every render happens in the visitor's browser —
+so the only cost of hosting this is bytes. Which makes compression the whole game:
+
+| | raw | brotli |
+|---|---|---|
+| `openscad.wasm` | 9.16 MB | 1.93 MB |
+| everything a cold visit needs | ~12 MB | ~3 MB |
+
+`scripts/precompress.mjs` writes `.br`/`.gz` beside each compressible file at build
+time and Caddy serves those directly. Compressing a 9MB binary at brotli-11 costs
+seconds of CPU, which is fine once in a container build and absurd per request.
+Repeat visits cost close to nothing: `/assets/*` is content-hashed and immutable,
+while the engine and fonts revalidate, since those keep their names across versions
+and a year of immutable caching would strand anyone holding an old copy.
+
+Put whatever you like in front of it for TLS — a Cloudflare tunnel reaches the
+container over the docker network. Two things are worth checking rather than
+assuming, if you do: that `.wasm` is actually being cached at the edge (it is not a
+default-cached extension, so it wants an explicit cache rule), and that the edge is
+not re-compressing what is already compressed here.
+
 ## Getting started
 
 ```sh

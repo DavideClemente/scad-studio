@@ -1,0 +1,43 @@
+# Static hosting for the built app. Plain HTTP on 8080: TLS belongs to whatever
+# fronts this — a Cloudflare tunnel terminates it at the edge and reaches the
+# container over the docker network — so Caddy's automatic HTTPS is off.
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	root * /srv
+
+	# Serves the .br/.gz written by scripts/precompress.mjs when the client accepts
+	# them. The engine is 9MB raw and under 2MB brotli, and compressing that per
+	# request would cost more CPU than the whole render does.
+	file_server {
+		precompressed br gzip
+	}
+
+	encode gzip
+
+	# Content-hashed, so the name changes whenever the bytes do.
+	@immutable path /assets/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	# Not hashed: the engine keeps its name across versions, and `npm run setup`
+	# can fetch a newer one. A year of immutable caching would strand every client
+	# that had the old one, so these revalidate instead — cheap, since a 304 is a
+	# few hundred bytes and the answer is almost always "unchanged".
+	@revalidate path /openscad/* /fonts/*
+	header @revalidate Cache-Control "public, max-age=3600, must-revalidate"
+
+	header /index.html Cache-Control "no-cache"
+
+	# Deliberately no SPA fallback. The app has no router, and the dev server's
+	# /__scad/* endpoints do not exist here — a rewrite to index.html would answer
+	# those with 200 and a page of HTML, which the client then has to detect and
+	# discard. A plain 404 is the truth and is what it handles best.
+
+	log {
+		output stderr
+		format console
+	}
+}
