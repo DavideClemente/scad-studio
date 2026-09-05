@@ -25,3 +25,6 @@ dist-ssr
 
 # Vendored OpenSCAD WASM engine, fetched via `npm run setup`
 public/openscad/
+
+# Personal .scad designs the dev server follows on disk; never committed
+designs/
