@@ -6,6 +6,17 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 // Roughly an Ender-3 / Prusa MK3-sized bed, in millimeters.
 const BED_SIZE_MM = 220;
 
+/**
+ * Looking straight down at the bed, which is the view that shows what a flat
+ * design actually is: an outline. Almost straight down, in fact — the camera's up
+ * axis is +Z to match the print bed, and a camera placed exactly on that axis has
+ * no defined orientation about it. The small lean south of vertical settles that,
+ * puts the model's +Y at the top of the screen, and is far too slight to see.
+ */
+function topDown(distance: number, height = 0): [number, number, number] {
+  return [0, -distance * 0.02, height + distance];
+}
+
 type Props = {
   stl: ArrayBuffer | null;
 };
@@ -32,7 +43,7 @@ export function ModelViewer({ stl }: Props) {
 
     const camera = new THREE.PerspectiveCamera(45, 1, 1, 5000);
     camera.up.set(0, 0, 1);
-    camera.position.set(BED_SIZE_MM * 0.8, -BED_SIZE_MM * 1.2, BED_SIZE_MM);
+    camera.position.set(...topDown(BED_SIZE_MM * 1.6));
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -69,12 +80,12 @@ export function ModelViewer({ stl }: Props) {
         const radius = Math.max(geometry.boundingSphere?.radius ?? BED_SIZE_MM / 2, 20);
         const distance = radius * 3;
 
-        camera.position.set(distance * 0.6, -distance * 0.9, distance * 0.7);
+        camera.position.set(...topDown(distance, size.z / 2));
         camera.near = Math.max(radius / 100, 0.1);
         camera.far = distance * 20;
         controls.target.set(0, 0, size.z / 2);
       } else {
-        camera.position.set(BED_SIZE_MM * 0.8, -BED_SIZE_MM * 1.2, BED_SIZE_MM);
+        camera.position.set(...topDown(BED_SIZE_MM * 1.6));
         camera.near = 1;
         camera.far = 5000;
         controls.target.set(0, 0, 0);

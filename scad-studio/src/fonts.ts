@@ -29,14 +29,13 @@ export type ScadFont = {
 
 export const FONTS: ScadFont[] = [
   { file: 'Norican-Regular.ttf', family: 'Norican', onePiece: 12, bold: 0.05 },
-  { file: 'DancingScript.ttf', family: 'Dancing Script', onePiece: 12, bold: 0.35 },
   { file: 'GreatVibes-Regular.ttf', family: 'Great Vibes', onePiece: 12, bold: 0.35 },
-  // 10 of 12 once bold goes up to 0.35.
-  { file: 'Lobster-Regular.ttf', family: 'Lobster', onePiece: 3, bold: 0.05 },
-  // Its lowercase joints are hairlines at this size; weight barely helps.
+  { file: 'DancingScript.ttf', family: 'Dancing Script', onePiece: 11, bold: 0.35 },
+  { file: 'Lobster-Regular.ttf', family: 'Lobster', onePiece: 10, bold: 0.35 },
+  // Its lowercase joints are hairlines at this size; more weight barely helps.
   { file: 'Pacifico-Regular.ttf', family: 'Pacifico', onePiece: 2, bold: 0.05 },
   // Not a script face at all — its letters never touch, so it needs the swash.
-  { file: 'OpenSans.ttf', family: 'Open Sans', onePiece: 1, bold: 0.05 },
+  { file: 'OpenSans.ttf', family: 'Open Sans', onePiece: 0, bold: 0.05 },
 ];
 
 /** fontconfig needs a config file before it will look anywhere at all. */

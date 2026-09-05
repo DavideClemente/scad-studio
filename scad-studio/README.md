@@ -28,9 +28,12 @@ loose letters nor a floating accent survive printing. What keeps it whole:
   which has no ink at all. Squeezing all the letters together to close those two is
   what the design used to do, and it drives one letter's tail through the next;
 - so a capital is *tucked* instead — the rest of the word slides under it, the way
-  a hand writes it — and what is left of the seam is closed with a fillet at the
-  point where the two letters come closest. A space gets a short stroke, across the
-  space only;
+  a hand writes it — and what is left of the seam is closed with a small fillet at
+  the point where the two letters come closest. How far to tuck is per capital and
+  measured, not guessed: sixteen of the twenty-six need nothing and are left where
+  the face puts them, while a "T" needs a quarter of the text size. One fixed tuck
+  for all of them jams the second letter into the bowl of a "C" and still does not
+  reach for the "T". A space gets a short stroke, across the space only;
 - `connect = "tie"` carries the name to the band by dragging the outermost sliver
   of ink of the end letters out to it. Sweeping a stroke along the baseline from
   inside the first letter also works and is what this used to do: between the two
@@ -47,10 +50,10 @@ loose letters nor a floating accent survive printing. What keeps it whole:
 None of that is a *proof*, so after every render the app counts the separate solids
 in the mesh and shows **One piece** or **N loose pieces** in the toolbar. That check
 works on any design, not just this one — and it is how the default face was chosen.
-Run twelve real names through this design and count: Norican, Dancing Script and
-Great Vibes manage twelve out of twelve, Lobster ten, Pacifico two, Open Sans one.
-Norican is the default because it is the one that does it at its own weight rather
-than by being fattened until the letters merge.
+Run twelve real names through this design and count: Norican and Great Vibes manage
+twelve out of twelve, Dancing Script eleven, Lobster ten, Pacifico two, Open Sans
+none. Norican is the default because it is the one that does it at its own weight
+rather than by being fattened until the letters merge.
 
 ## How it works
 

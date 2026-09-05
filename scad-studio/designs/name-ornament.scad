@@ -10,13 +10,14 @@ diameter    = 70;   // mm across the round part (the loop adds a little on top)
 thickness   = 3;  // mm
 // Available faces, and how many of twelve test names each one got through this
 // design in a single connected piece. Norican is the default because it holds
-// together at its own weight; the two behind it only manage it by being fattened.
+// together at its own weight; the three behind it only manage it by being fattened,
+// and the tuck table below was measured against Norican in particular.
 //   "Norican"         text_bold = 0.05    12/12
-//   "Dancing Script"  text_bold = 0.35    12/12
 //   "Great Vibes"     text_bold = 0.35    12/12
+//   "Dancing Script"  text_bold = 0.35    11/12
 //   "Lobster"         text_bold = 0.35    10/12
 //   "Pacifico"        text_bold = 0.05     2/12 — hairline joints, opened away again
-//   "Open Sans"       text_bold = 0.05     1/12 — not a script face; use connect = "swash"
+//   "Open Sans"       text_bold = 0.05     0/12 — not a script face; use connect = "swash"
 font        = "Norican";
 seed        = 42;       // change for a different set of snowflakes
 // ...or floor(rands(0, 10000, 1)[0]) for a new set on every render
@@ -37,8 +38,9 @@ stroke         = 1;      // thinnest feature anywhere; keep it >= 2x your nozzle
 text_bold      = 0.05;    // fattens thin script strokes so they print
 weld           = 0.012;      // closes hairline gaps in the lettering, x text size
 letter_spacing = 1.00;  // 1 is the face's own spacing; below 1 squeezes the letters
-cap_tuck       = 0.12;   // how far the rest of the name slides under a capital, x text size
-join_weld      = 0.08;    // fillet that closes a seam the script leaves open, x text size
+cap_tuck       = 0;      // extra tuck under *every* capital, x text size; the faces
+                         // here do not need it, but a different one might
+join_weld      = 0.04;    // fillet that closes a seam the script leaves open, x text size
 text_fill      = 0.88;    // share of the inner width the name should span
 text_height    = 0.5;    // cap on the name's height, x the bauble radius; raise it to
                          // make a short name fill the disc and shorten its ties
@@ -70,12 +72,29 @@ function prefix(n) = n <= 0 ? "" : chr([for (i = [0 : n - 1]) ord(name[i])]);
 CAPITALS = "ABCDEFGHIJKLMNOPQRSTUVWXYZÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÝÑ";
 function is_upper(ch) = len(search(ch, CAPITALS)) > 0;
 
-// Total tuck absorbed before glyph n: a script capital is drawn with the pen
-// lifted afterwards, so the rest of the word is written in under it rather than
-// after it. This is the same move a hand makes, and it is what brings the second
-// letter close enough for the weld below to be a fillet instead of a slab.
-function tucked(n) = n <= 0 ? 0
-  : REF * cap_tuck * len([for (i = [0 : n - 1]) if (is_upper(name[i])) 1]);
+// "Ú" leans over the next letter exactly the way "U" does, so the tuck table
+// below is looked up by the plain letter. ACCENTS/BASES are further down, where
+// the marks themselves are dealt with.
+function unaccented(ch) = let (hit = search(ch, ACCENTS))
+  len(hit) > 0 ? BASES[hit[0]] : ch;
+
+// Some capitals are drawn with an arm reaching out over whatever follows, and the
+// word has to be written in under them the way a hand would — no fillet reaches
+// across a "T" on its own. How far, per capital, was found by rendering each one
+// against a, o, e, r, u and l and stepping the tuck up until the pair came out as
+// a single solid. Sixteen of the twenty-six need nothing at the fillet radius
+// below, and are left exactly where the face puts them.
+//
+// Tucking every capital by one fixed amount instead is the obvious version and it
+// is wrong twice over: it jams the second letter into the bowl of a "C" that was
+// sitting at a perfectly good distance, and it still does not reach for a "T".
+TUCK_CAPS = "BDFIPSTUVW";
+TUCK_BY   = [0.06, 0.09, 0.11, 0.06, 0.11, 0.11, 0.24, 0.13, 0.11, 0.09];
+function tuck_for(ch) = let (hit = search(unaccented(ch), TUCK_CAPS))
+  (len(hit) > 0 ? TUCK_BY[hit[0]] : 0) + (is_upper(ch) ? cap_tuck : 0);
+
+// Total tuck absorbed before glyph n.
+function tucked(n) = n <= 0 ? 0 : tucked(n - 1) + REF * tuck_for(name[n - 1]);
 
 // x of glyph n's own origin, at reference size. Taking the advance up to and
 // including the glyph and removing the glyph's own advance keeps the kern pair
@@ -304,9 +323,14 @@ module accent_ties() {
   for (k = [0 : len(name) - 1]) {
     ch = name[k];
     if (is_marked(ch)) {
-      // The mark is smeared down until it reaches the letter, then cut back to
-      // the floor, so all that stays visible is a stub bridging the real gap —
-      // in the mark's own width, which on an "i" reads as a stem under the dot.
+      // A column of the mark is smeared down until it reaches the letter, then cut
+      // back to the floor, so all that stays visible is a stub bridging the real
+      // gap — which on an "i" reads as a stem under the dot.
+      //
+      // A column rather than the whole mark: an i-dot in a script face is a fat
+      // blob, and dragging all of it down leaves a slab as wide as the dot sitting
+      // across the letter. The stub only has to hold the mark on, so it is drawn
+      // at the design's own minimum feature and no wider.
       //
       // The floor sits well below the letter's highest point rather than level
       // with it: a round letter has ink at its own top for only an instant, so a
@@ -315,17 +339,15 @@ module accent_ties() {
       drop  = (ink_top(ch) - bare_top(ch)) * s + dig + text_bold;
       floor = baseline + bare_top(ch) * s - dig;
 
-      gm  = metrics(ch);
-      x0  = anchor_x + pen(k) + gm.position[0] * s;
-      gw  = gm.size[0] * s;
-      leg = max(stroke, text_size * 0.075);
-      n   = len(search(ch, WIDE_MARKS)) > 0 ? max(2, round(gw / (leg * 3))) : 1;
+      gm   = metrics(ch);
+      x0   = anchor_x + pen(k) + gm.position[0] * s;
+      gw   = gm.size[0] * s;
+      wide = len(search(ch, WIDE_MARKS)) > 0;
+      leg  = max(stroke, text_size * (wide ? 0.075 : 0.04));
+      n    = wide ? max(2, round(gw / (leg * 3))) : 1;
 
       for (j = [0 : n - 1]) intersection() {
-        smear_down(drop) {
-          if (n == 1) mark(k, ch);
-          else mark_column(k, ch, x0 + gw * (j + 0.5) / n, leg);
-        }
+        smear_down(drop) mark_column(k, ch, x0 + gw * (j + 0.5) / n, leg);
         translate([-diameter, floor]) square([2 * diameter, 2 * diameter]);
       }
     }
@@ -351,13 +373,22 @@ module accent_ties() {
 // directions. Clipping that to a band across the seam keeps it from rounding off
 // the insides of the letters themselves. Nothing crosses a glyph; the letters just
 // meet, the way they would if the hand had not lifted.
+//
+// The radius is deliberately small, and the tuck above does most of the work. A
+// fillet is not really a join — it fills everything within 2r — so where two
+// letters run alongside each other rather than merely meeting, as an "S" does past
+// the "o" that follows it, a generous one floods the whole channel between them and
+// leaves a lump where a hairline was wanted.
 module close_seam(a, b, r) {
   ma = metrics(name[a]);
   mb = metrics(name[b]);
   xe = anchor_x + pen(a) + (ma.position[0] + ma.size[0]) * s;   // right ink edge of a
   xs = anchor_x + pen(b) + mb.position[0] * s;                  // left ink edge of b
-  lo = min(xe, xs) - r;
-  hi = max(xe, xs) + r;
+  // Wider than the fillet itself. Cut the fillet where it is still thick and the
+  // cut shows as a step against the letter; give it room to taper away and the
+  // join ends where the two outlines stop being close, which is where a join ends.
+  lo = min(xe, xs) - r * 2;
+  hi = max(xe, xs) + r * 2;
   intersection() {
     offset(r = -r) offset(r = r) children();
     translate([lo, -diameter]) square([hi - lo, 2 * diameter]);
