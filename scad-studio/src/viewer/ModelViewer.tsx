@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
@@ -16,6 +16,10 @@ export function ModelViewer({ stl }: Props) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const gridRef = useRef<THREE.GridHelper | null>(null);
+  const axesRef = useRef<THREE.AxesHelper | null>(null);
+  const [showGrid, setShowGrid] = useState(true);
+  const [showAxes, setShowAxes] = useState(true);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -47,9 +51,11 @@ export function ModelViewer({ stl }: Props) {
     const grid = new THREE.GridHelper(BED_SIZE_MM, BED_SIZE_MM / 10, '#4a5568', '#2d3340');
     grid.rotation.x = Math.PI / 2;
     scene.add(grid);
+    gridRef.current = grid;
 
     const axes = new THREE.AxesHelper(BED_SIZE_MM * 0.15);
     scene.add(axes);
+    axesRef.current = axes;
 
     let frameId: number;
     const animate = () => {
@@ -120,5 +126,26 @@ export function ModelViewer({ stl }: Props) {
     }
   }, [stl]);
 
-  return <div ref={containerRef} className="model-viewer" />;
+  useEffect(() => {
+    if (gridRef.current) gridRef.current.visible = showGrid;
+  }, [showGrid]);
+
+  useEffect(() => {
+    if (axesRef.current) axesRef.current.visible = showAxes;
+  }, [showAxes]);
+
+  return (
+    <div ref={containerRef} className="model-viewer">
+      <div className="viewer-options">
+        <label>
+          <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+          Grid
+        </label>
+        <label>
+          <input type="checkbox" checked={showAxes} onChange={(e) => setShowAxes(e.target.checked)} />
+          Axes
+        </label>
+      </div>
+    </div>
+  );
 }
