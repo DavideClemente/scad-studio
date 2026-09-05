@@ -18,6 +18,7 @@ export function ModelViewer({ stl }: Props) {
   const controlsRef = useRef<OrbitControls | null>(null);
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const axesRef = useRef<THREE.AxesHelper | null>(null);
+  const resetViewRef = useRef<() => void>(() => {});
   const [showGrid, setShowGrid] = useState(true);
   const [showAxes, setShowAxes] = useState(true);
 
@@ -56,6 +57,32 @@ export function ModelViewer({ stl }: Props) {
     const axes = new THREE.AxesHelper(BED_SIZE_MM * 0.15);
     scene.add(axes);
     axesRef.current = axes;
+
+    const resetView = () => {
+      const mesh = meshRef.current;
+      if (mesh) {
+        const geometry = mesh.geometry;
+        geometry.computeBoundingSphere();
+        geometry.computeBoundingBox();
+        const size = new THREE.Vector3();
+        geometry.boundingBox?.getSize(size);
+        const radius = Math.max(geometry.boundingSphere?.radius ?? BED_SIZE_MM / 2, 20);
+        const distance = radius * 3;
+
+        camera.position.set(distance * 0.6, -distance * 0.9, distance * 0.7);
+        camera.near = Math.max(radius / 100, 0.1);
+        camera.far = distance * 20;
+        controls.target.set(0, 0, size.z / 2);
+      } else {
+        camera.position.set(BED_SIZE_MM * 0.8, -BED_SIZE_MM * 1.2, BED_SIZE_MM);
+        camera.near = 1;
+        camera.far = 5000;
+        controls.target.set(0, 0, 0);
+      }
+      camera.updateProjectionMatrix();
+      controls.update();
+    };
+    resetViewRef.current = resetView;
 
     let frameId: number;
     const animate = () => {
@@ -111,19 +138,7 @@ export function ModelViewer({ stl }: Props) {
     scene.add(mesh);
     meshRef.current = mesh;
 
-    if (camera && controls) {
-      geometry.computeBoundingSphere();
-      const radius = Math.max(geometry.boundingSphere?.radius ?? BED_SIZE_MM / 2, 20);
-      const distance = radius * 3;
-
-      camera.position.set(distance * 0.6, -distance * 0.9, distance * 0.7);
-      camera.near = Math.max(radius / 100, 0.1);
-      camera.far = distance * 20;
-      camera.updateProjectionMatrix();
-
-      controls.target.set(0, 0, size.z / 2);
-      controls.update();
-    }
+    if (camera && controls) resetViewRef.current();
   }, [stl]);
 
   useEffect(() => {
@@ -145,6 +160,9 @@ export function ModelViewer({ stl }: Props) {
           <input type="checkbox" checked={showAxes} onChange={(e) => setShowAxes(e.target.checked)} />
           Axes
         </label>
+        <button className="btn btn-small" onClick={() => resetViewRef.current()}>
+          Reset View
+        </button>
       </div>
     </div>
   );

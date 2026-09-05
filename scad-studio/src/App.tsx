@@ -79,6 +79,20 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        handleRender();
+      }
+    };
+    // Capture phase: must run before Monaco's own bubble-phase handler, or
+    // it inserts a newline into the source before we can prevent it.
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [handleRender]);
+
   const handleNew = useCallback(() => {
     if (source.trim() && !confirm('Discard the current design and start a blank one?')) return;
     setSource('');
@@ -141,7 +155,7 @@ export default function App() {
       />
       <main className={`workspace ${isResizing ? 'is-resizing' : ''}`} ref={workspaceRef}>
         <div className="pane pane-editor" style={{ width: `${editorWidthPct}%` }}>
-          <CodeEditor value={source} onChange={setSource} onRenderShortcut={handleRender} />
+          <CodeEditor value={source} onChange={setSource} />
         </div>
         <div className="divider" onMouseDown={handleDividerMouseDown} />
         <div className="pane pane-viewer">

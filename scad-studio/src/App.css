@@ -63,6 +63,11 @@
   border-color: var(--accent-strong);
 }
 
+.btn-small {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 .status {
   font-size: 13px;
   color: var(--text-dim);
@@ -156,6 +161,10 @@
   align-items: center;
   gap: 6px;
   cursor: pointer;
+}
+
+.viewer-options .btn-small {
+  margin-top: 4px;
 }
 
 .console-panel {
