@@ -3,6 +3,8 @@ export type RenderResult = {
   stdout: string;
   stderr: string;
   durationMs: number;
+  /** Separate solids in the result; anything above 1 falls apart when printed. */
+  shells: number;
 };
 
 export class RenderError extends Error {
@@ -23,7 +25,15 @@ type PendingEntry = {
 };
 
 type WorkerMessage =
-  | { type: 'success'; id: number; stl: ArrayBuffer; stdout: string; stderr: string; durationMs: number }
+  | {
+      type: 'success';
+      id: number;
+      stl: ArrayBuffer;
+      stdout: string;
+      stderr: string;
+      durationMs: number;
+      shells: number;
+    }
   | { type: 'failure'; id: number; error: string; stdout: string; stderr: string };
 
 /** Talks to a single dedicated worker that runs the OpenSCAD WASM engine. */
@@ -41,7 +51,13 @@ export class OpenScadClient {
       this.pending.delete(data.id);
 
       if (data.type === 'success') {
-        entry.resolve({ stl: data.stl, stdout: data.stdout, stderr: data.stderr, durationMs: data.durationMs });
+        entry.resolve({
+          stl: data.stl,
+          stdout: data.stdout,
+          stderr: data.stderr,
+          durationMs: data.durationMs,
+          shells: data.shells,
+        });
       } else {
         entry.reject(new RenderError(data.error, data.stdout, data.stderr));
       }

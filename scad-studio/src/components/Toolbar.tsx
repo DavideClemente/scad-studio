@@ -14,6 +14,19 @@ type Props = {
   onSaveScad: () => void;
   onDownloadStl: () => void;
   onSelectExample: (source: string) => void;
+  /** Separate solids in the last render; more than one won't survive printing. */
+  shells: number | null;
+  /** The .scad files in designs/, which the dev server watches. Empty in a build. */
+  designs: string[];
+  onOpenDesign: (path: string) => void;
+  /** The design the editor is following, if any. */
+  openDesign: string | null;
+  /** Something that just happened to the link, worth a line for a few seconds. */
+  linkNote: string | null;
+  /** The linked file changed while the editor held edits of its own. */
+  conflict: boolean;
+  onTakeDisk: () => void;
+  onKeepMine: () => void;
 };
 
 export function Toolbar({
@@ -26,6 +39,14 @@ export function Toolbar({
   onSaveScad,
   onDownloadStl,
   onSelectExample,
+  shells,
+  designs,
+  onOpenDesign,
+  openDesign,
+  linkNote,
+  conflict,
+  onTakeDisk,
+  onKeepMine,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,6 +73,26 @@ export function Toolbar({
           Save
         </button>
 
+        {designs.length > 0 && (
+          <select
+            className="btn"
+            value={openDesign ?? ''}
+            onChange={(event) => {
+              if (event.target.value) onOpenDesign(event.target.value);
+            }}
+            title="Open a design from designs/. Edits made to it on disk show up here."
+          >
+            <option value="" disabled>
+              Designs…
+            </option>
+            {designs.map((design) => (
+              <option key={design} value={design}>
+                {design}
+              </option>
+            ))}
+          </select>
+        )}
+
         <select
           className="btn"
           defaultValue=""
@@ -73,6 +114,40 @@ export function Toolbar({
       </div>
 
       <div className="toolbar-group toolbar-group-right">
+        {conflict ? (
+          <span className="link-conflict">
+            {openDesign} changed on disk, and so did this editor.
+            <button className="btn btn-small" onClick={onTakeDisk}>
+              Use the file
+            </button>
+            <button className="btn btn-small" onClick={onKeepMine}>
+              Keep mine
+            </button>
+          </span>
+        ) : (
+          linkNote && <span className="link-note">{linkNote}</span>
+        )}
+        {openDesign && !conflict && (
+          <span
+            className="link-name"
+            title={`Following designs/${openDesign}. Changes to it on disk land here; press Render to build them.`}
+          >
+            <span className="link-dot" />
+            {openDesign}
+          </span>
+        )}
+        {status === 'success' && shells != null && (
+          <span
+            className={`shells ${shells === 1 ? 'shells-ok' : 'shells-warn'}`}
+            title={
+              shells === 1
+                ? 'The whole model is one connected solid, so nothing can fall off while printing.'
+                : `The model is in ${shells} separate pieces. They will print as loose parts — connect them before slicing.`
+            }
+          >
+            {shells === 1 ? 'One piece' : `${shells} loose pieces`}
+          </span>
+        )}
         <span className={`status status-${status}`}>
           {status === 'rendering' && 'Rendering…'}
           {status === 'success' && lastRenderMs != null && `Rendered in ${(lastRenderMs / 1000).toFixed(1)}s`}
