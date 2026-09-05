@@ -1,0 +1,39 @@
+:root {
+  color-scheme: dark;
+  --bg-app: #14161b;
+  --bg-panel: #1a1d23;
+  --bg-raised: #23262e;
+  --border: #2e323c;
+  --text: #d6d9e0;
+  --text-dim: #8b909c;
+  --accent: #f0a24a;
+  --accent-strong: #ffb35c;
+  --danger: #e0654f;
+  --sans: 'Segoe UI', system-ui, Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font: 14px/1.5 var(--sans);
+  color: var(--text);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
