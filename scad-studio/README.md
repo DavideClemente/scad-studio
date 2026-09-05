@@ -12,9 +12,11 @@ a Web Worker, so nothing is uploaded anywhere.
 `designs/` holds finished `.scad` designs. They are **not** bundled into the app —
 nothing under `designs/` is built — but the dev server serves and watches them, so
 pick one from **Designs…** and the editor follows it: change the file on disk in
-any editor and the new text appears here. It does *not* re-render on its own; press
-Render when you want to see it. If the editor has edits of its own when the file
-changes, you get the choice rather than losing them.
+any editor and the new text appears here, no reload. It does *not* re-render on its
+own; press Render when you want to see it. If the editor has edits of its own when
+the file changes, you get the choice rather than losing them — and only then, since
+what is remembered across a reload is a flag saying whether you had edited, not a
+second copy of the text to compare against.
 
 `name-ornament.scad` is a personalised Christmas bauble: set `name`, `diameter` and
 the rest at the top of the file and hit Render.

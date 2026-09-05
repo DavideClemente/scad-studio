@@ -36,25 +36,32 @@ export function saveOpenDesign(designPath: string | null) {
   }
 }
 
-const DISK_TEXT_KEY = 'scad-studio:disk-text';
+const EDITOR_DIRTY_KEY = 'scad-studio:editor-dirty';
 
 /**
- * What the followed design said on disk when the editor last agreed with it.
- * Without this, a reload cannot tell "the file changed while I was away" from
- * "I edited this and did not save", and has to ask about both.
+ * Whether the editor had gone past the followed design's file when the page was
+ * last touched. A reload has to know this to tell "the file changed while I was
+ * away" (take it) from "I edited this and did not save" (ask).
+ *
+ * A flag rather than a second copy of the text to compare against. That is what
+ * this was at first, and it was wrong: the copy of the editor's text is written
+ * on a debounce and the copy of the file's text was written the instant a change
+ * arrived, so closing the page in between left the two disagreeing about a change
+ * nobody had made, and every reload opened with a conflict to resolve. A flag can
+ * be written on the same tick as the thing it describes, so it cannot drift.
  */
-export function loadDiskText(): string | null {
+export function loadEditorDirty(): boolean {
   try {
-    return localStorage.getItem(DISK_TEXT_KEY);
+    return localStorage.getItem(EDITOR_DIRTY_KEY) === '1';
   } catch {
-    return null;
+    return false;
   }
 }
 
-export function saveDiskText(text: string | null) {
+export function saveEditorDirty(dirty: boolean) {
   try {
-    if (text === null) localStorage.removeItem(DISK_TEXT_KEY);
-    else localStorage.setItem(DISK_TEXT_KEY, text);
+    if (dirty) localStorage.setItem(EDITOR_DIRTY_KEY, '1');
+    else localStorage.removeItem(EDITOR_DIRTY_KEY);
   } catch {
     // Same as the autosave: a convenience, not a guarantee.
   }
