@@ -1,0 +1,11 @@
+services:
+  scad-studio:
+    build: .
+    image: scad-studio
+    container_name: scad-studio
+    restart: unless-stopped
+    # Left on the host loopback: a Cloudflare tunnel reaches it from the same
+    # machine, and nothing else needs to. Drop the 127.0.0.1 to expose it on the
+    # LAN, or remove `ports` entirely and put cloudflared on a shared network.
+    ports:
+      - "127.0.0.1:8080:8080"

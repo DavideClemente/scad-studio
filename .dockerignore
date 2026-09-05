@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.DS_Store
+*.log
+
+# Fetched during the build by `npm run setup`, and ~10MB. Sending a local copy
+# into the build context would only slow the build down.
+public/openscad
