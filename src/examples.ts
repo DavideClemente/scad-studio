@@ -78,6 +78,23 @@ module wheel() {
 wheel();
 `,
   },
+  {
+    id: 'loose-pieces',
+    name: 'Three separate pieces',
+    source: `// Three shapes spaced far enough apart that none of them touch -
+// a design made of more than one piece, rather than one connected whole.
+
+gap = 20;
+
+translate([-gap, 0, 0])
+  cube(14, center = true);
+
+sphere(r = 9, $fn = 48);
+
+translate([gap, 0, 0])
+  cylinder(h = 16, r = 7, center = true, $fn = 48);
+`,
+  },
 ];
 
 export const DEFAULT_SOURCE = EXAMPLES[0].source;

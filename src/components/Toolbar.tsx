@@ -1,5 +1,5 @@
-import { useRef } from 'react';
-import type { ChangeEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
 import { EXAMPLES } from '../examples';
 
 type Status = 'idle' | 'rendering' | 'success' | 'error';
@@ -14,7 +14,7 @@ type Props = {
   onSaveScad: () => void;
   onDownloadStl: () => void;
   onSelectExample: (source: string) => void;
-  /** Separate solids in the last render; more than one won't survive printing. */
+  /** Separate solids in the last render; more than one means the model isn't a single connected piece. */
   shells: number | null;
   /** The .scad files in designs/, which the dev server watches. Empty in a build. */
   designs: string[];
@@ -28,6 +28,23 @@ type Props = {
   onTakeDisk: () => void;
   onKeepMine: () => void;
 };
+
+/** A badge whose meaning isn't obvious from its label alone: shows the given
+ * text in a visible popover on hover or keyboard focus, rather than relying on
+ * the browser's native (easy-to-miss) title tooltip. */
+function InfoBadge({ className, info, children }: { className: string; info: string; children: ReactNode }) {
+  return (
+    <span className={`info-badge ${className}`} tabIndex={0}>
+      {children}
+      <span className="info-badge-icon" aria-hidden="true">
+        ⓘ
+      </span>
+      <span className="info-badge-tooltip" role="tooltip">
+        {info}
+      </span>
+    </span>
+  );
+}
 
 export function Toolbar({
   status,
@@ -49,6 +66,8 @@ export function Toolbar({
   onKeepMine,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -57,22 +76,68 @@ export function Toolbar({
     file.text().then((text) => onOpenSource(text, file.name));
   };
 
+  // Close the file menu on an outside click, so it behaves like a normal menu
+  // rather than staying open until one of its own items is picked.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
+
   return (
     <header className="toolbar">
-      <div className="toolbar-brand">Scad Studio</div>
+      <div className="brand-menu" ref={menuRef}>
+        <button
+          className="toolbar-brand"
+          onClick={() => setMenuOpen((open) => !open)}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          title="New, Open, Save"
+        >
+          Scad Studio
+          <span className="brand-caret">▾</span>
+        </button>
+        {menuOpen && (
+          <div className="brand-dropdown" role="menu">
+            <button
+              className="dropdown-item"
+              role="menuitem"
+              onClick={() => {
+                onNew();
+                setMenuOpen(false);
+              }}
+            >
+              New
+            </button>
+            <button
+              className="dropdown-item"
+              role="menuitem"
+              onClick={() => {
+                fileInputRef.current?.click();
+                setMenuOpen(false);
+              }}
+            >
+              Open
+            </button>
+            <button
+              className="dropdown-item"
+              role="menuitem"
+              onClick={() => {
+                onSaveScad();
+                setMenuOpen(false);
+              }}
+            >
+              Save
+            </button>
+          </div>
+        )}
+        <input ref={fileInputRef} type="file" accept=".scad" hidden onChange={handleFileChange} />
+      </div>
 
       <div className="toolbar-group">
-        <button className="btn" onClick={onNew} title="Start a blank design">
-          New
-        </button>
-        <button className="btn" onClick={() => fileInputRef.current?.click()} title="Open a .scad file">
-          Open
-        </button>
-        <input ref={fileInputRef} type="file" accept=".scad" hidden onChange={handleFileChange} />
-        <button className="btn" onClick={onSaveScad} title="Download the current source as .scad">
-          Save
-        </button>
-
         {designs.length > 0 && (
           <select
             className="btn"
@@ -128,25 +193,25 @@ export function Toolbar({
           linkNote && <span className="link-note">{linkNote}</span>
         )}
         {openDesign && !conflict && (
-          <span
+          <InfoBadge
             className="link-name"
-            title={`Following designs/${openDesign}. Changes to it on disk land here; press Render to build them.`}
+            info={`Following designs/${openDesign}. Changes to it on disk land here; press Render to build them.`}
           >
             <span className="link-dot" />
             {openDesign}
-          </span>
+          </InfoBadge>
         )}
         {status === 'success' && shells != null && (
-          <span
+          <InfoBadge
             className={`shells ${shells === 1 ? 'shells-ok' : 'shells-warn'}`}
-            title={
+            info={
               shells === 1
-                ? 'The whole model is one connected solid, so nothing can fall off while printing.'
-                : `The model is in ${shells} separate pieces. They will print as loose parts — connect them before slicing.`
+                ? 'The whole model is one connected solid.'
+                : `The model is made of ${shells} separate pieces, not connected to one another.`
             }
           >
             {shells === 1 ? 'One piece' : `${shells} loose pieces`}
-          </span>
+          </InfoBadge>
         )}
         <span className={`status status-${status}`}>
           {status === 'rendering' && 'Rendering…'}
