@@ -1,7 +1,12 @@
 services:
   scad-studio:
+    # Pulled from GHCR by default (built there by .github/workflows/docker-publish.yml
+    # on every push to main) so the server never needs the source tree or a build
+    # toolchain: `docker compose pull && docker compose up -d` is the whole deploy.
+    # `build: .` is kept so local dev can still do `docker compose up -d --build`
+    # against the Dockerfile directly.
+    image: ghcr.io/davideclemente/scad-studio:latest
     build: .
-    image: scad-studio
     container_name: scad-studio
     restart: unless-stopped
     # Left on the host loopback: a Cloudflare tunnel reaches it from the same
@@ -9,3 +14,8 @@ services:
     # LAN, or remove `ports` entirely and put cloudflared on a shared network.
     ports:
       - "127.0.0.1:8080:8080"
+    labels:
+      # Harmless whether or not Watchtower is running with WATCHTOWER_LABEL_ENABLE:
+      # it opts this container in if label-scoping is on, and is a no-op if
+      # Watchtower is already watching everything.
+      - "com.centurylinklabs.watchtower.enable=true"
