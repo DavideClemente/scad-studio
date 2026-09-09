@@ -271,9 +271,17 @@ export default function App() {
     download(new Blob([stl], { type: 'model/stl' }), 'model.stl');
   }, [stl]);
 
-  const handleSelectExample = useCallback((exampleSource: string) => {
-    setSource(exampleSource);
-  }, []);
+  // An example is a detached copy, like a file opened from disk: it drops any
+  // link the editor had rather than leaving a stale name in the toolbar.
+  const handleSelectExample = useCallback(
+    (exampleSource: string) => {
+      setOpenDesign(null);
+      setConflict(null);
+      diskRef.current = null;
+      applySource(exampleSource, true);
+    },
+    [applySource],
+  );
 
   const stlAvailable = useMemo(() => stl != null, [stl]);
 
