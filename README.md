@@ -7,55 +7,21 @@ the browser, spin the model around on a virtual print bed, and export an STL rea
 Everything runs client-side: the actual OpenSCAD engine is compiled to WebAssembly and executes in
 a Web Worker, so nothing is uploaded anywhere.
 
-## Designs
+## Designs folder
 
-`designs/` holds finished `.scad` designs. They are **not** bundled into the app —
-nothing under `designs/` is built — but the dev server serves and watches them, so
-pick one from **Designs…** and the editor follows it: change the file on disk in
+`designs/` is where you keep your own `.scad` files to iterate on. It's git-ignored —
+bring your own designs, none are bundled into the app or committed to this repo.
+Nothing under it is built either; the dev server just serves and watches it, so
+pick a file from **Designs…** and the editor follows it: change the file on disk in
 any editor and the new text appears here, no reload. It does *not* re-render on its
 own; press Render when you want to see it. If the editor has edits of its own when
 the file changes, you get the choice rather than losing them — and only then, since
 what is remembered across a reload is a flag saying whether you had edited, not a
 second copy of the text to compare against.
 
-`name-ornament.scad` is a personalised Christmas bauble: set `name`, `diameter` and
-the rest at the top of the file and hit Render.
-
-A design like that has to come off the bed in **one connected piece**, and neither
-loose letters nor a floating accent survive printing. What keeps it whole:
-
-- a joined-up script face does most of it on its own. At its own spacing the
-  lowercase letters of the script faces here already run into each other; the seams
-  that stay open are the one after a capital, where a script lifts the pen, and a space,
-  which has no ink at all. Squeezing all the letters together to close those two is
-  what the design used to do, and it drives one letter's tail through the next;
-- so a capital is *tucked* instead — the rest of the word slides under it, the way
-  a hand writes it — and what is left of the seam is closed with a small fillet at
-  the point where the two letters come closest. How far to tuck is per capital and
-  measured, not guessed: sixteen of the twenty-six need nothing and are left where
-  the face puts them, while a "T" needs a quarter of the text size. One fixed tuck
-  for all of them jams the second letter into the bowl of a "C" and still does not
-  reach for the "T". A space gets a short stroke, across the space only;
-- `connect = "tie"` carries the name to the band by dragging the outermost sliver
-  of ink of the end letters out to it. Sweeping a stroke along the baseline from
-  inside the first letter also works and is what this used to do: between the two
-  ends it laid a straight rule the full width of the disc, under the whole name;
-- accents and the dots on i/j are separate contours, so legs cut from the mark
-  itself pin each one to the letter underneath;
-- every snowflake is turned so one arm points at the ring, and that arm is
-  extended until it definitely bites into the band;
-- snowflake arms are measured against the lettering as they are drawn and stop
-  short of it. Cutting them to shape afterwards was the obvious approach and it is
-  a trap: slicing an arm mid-branch leaves stubs attached to nothing, which is the
-  very failure being designed out.
-
-None of that is a *proof*, so after every render the app counts the separate solids
-in the mesh and shows **One piece** or **N loose pieces** in the toolbar. That check
-works on any design, not just this one — and it is how the default face was chosen.
-Run twelve real names through this design and count: Norican and Great Vibes manage
-twelve out of twelve, Dancing Script eleven, Lobster ten, Pacifico two, Open Sans
-none. Norican is the default because it is the one that does it at its own weight
-rather than by being fattened until the letters merge.
+The toolbar's **One piece** / **N loose pieces** check (see below) works on any
+design you drop in there — it's a general printability check, not tied to any
+particular file.
 
 ## How it works
 
