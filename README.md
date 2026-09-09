@@ -81,8 +81,26 @@ rather than by being fattened until the letters merge.
 
 ## Hosting it
 
+`.github/workflows/docker-publish.yml` builds the image and pushes it to
+[GHCR](https://ghcr.io) as `ghcr.io/davideclemente/scad-studio:latest` on every push to
+`main`. A server running [Watchtower](https://containrrr.dev/watchtower/) picks up a new
+`latest` on its own poll cycle, so deploying there is just:
+
 ```sh
-docker compose up -d --build      # http://127.0.0.1:8080
+docker compose up -d      # pulls from GHCR — http://127.0.0.1:8080
+```
+
+No source checkout or build toolchain needed on the server; Watchtower handles
+redeploying whenever CI publishes a new image. The GHCR package is private by default
+on first push — flip it to public (or grant the server's pull token `read:packages`)
+under the package's own Settings on GitHub, otherwise `docker compose pull` there will
+403.
+
+For local development, or to build without going through CI, the same Dockerfile still
+works directly:
+
+```sh
+docker compose up -d --build      # builds locally instead of pulling
 ```
 
 The image is a two-stage build: node fetches the engine, builds the app and
