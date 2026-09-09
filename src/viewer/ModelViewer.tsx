@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { buildTopology } from './meshTopology';
 import type { Topology } from './meshTopology';
-import { snapFeature } from './measureFeatures';
-import type { Feature } from './measureFeatures';
+import { findRings, snapFeature, snapThroughGap } from './measureFeatures';
+import type { Circle, Feature } from './measureFeatures';
 import { describeFeature, measure, summarizeFeature } from './measure';
 import type { Measurement } from './measure';
 import { MeasureOverlay } from './measureOverlay';
@@ -65,6 +66,7 @@ export function ModelViewer({ stl }: Props) {
   }, [measuring, measurement]);
 
   const topologyRef = useRef<Topology | null>(null);
+  const ringsRef = useRef<Circle[]>([]);
   const overlayRef = useRef<MeasureOverlay | null>(null);
   const hoverRef = useRef<Feature | null>(null);
   // Surfaces already worked out, shared by every face belonging to one. Without
@@ -76,6 +78,10 @@ export function ModelViewer({ stl }: Props) {
   const [origin, setOrigin] = useState(() => new THREE.Vector3());
   const hintRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
+  // Where the reading has been dragged to, in pixels off the middle of the line
+  // it belongs to. Kept out of state: it changes with every pointer move of a
+  // drag, and only the label itself has to know.
+  const labelOffsetRef = useRef({ x: 0, y: -26 });
 
   const addPick = useCallback((feature: Feature) => {
     // Two picks make a measurement; a third starts the next one, which is
@@ -84,6 +90,29 @@ export function ModelViewer({ stl }: Props) {
   }, []);
 
   const clearPicks = useCallback(() => setPicks([null, null]), []);
+
+  // Dragging the reading out of the way, the way a dimension moves in CAD: the
+  // line it names is often exactly what it was covering up.
+  const handleLabelPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const label = event.currentTarget;
+    const start = { x: event.clientX, y: event.clientY };
+    const from = { ...labelOffsetRef.current };
+    label.setPointerCapture(event.pointerId);
+
+    const handleMove = (move: PointerEvent) => {
+      labelOffsetRef.current = { x: from.x + (move.clientX - start.x), y: from.y + (move.clientY - start.y) };
+    };
+    const handleUp = () => {
+      label.removeEventListener('pointermove', handleMove);
+      label.removeEventListener('pointerup', handleUp);
+      label.removeEventListener('pointercancel', handleUp);
+    };
+    label.addEventListener('pointermove', handleMove);
+    label.addEventListener('pointerup', handleUp);
+    label.addEventListener('pointercancel', handleUp);
+  }, []);
 
   const stopMeasuring = useCallback(() => {
     setMeasuring(false);
@@ -198,33 +227,34 @@ export function ModelViewer({ stl }: Props) {
       ndc.set((pointer.x / width) * 2 - 1, -(pointer.y / height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
       const hit = raycaster.intersectObject(mesh, false)[0];
+
+      mesh.worldToLocal(localEye.copy(camera.position));
+      const context = {
+        topology,
+        project: (point: THREE.Vector3) => {
+          projected.copy(point).applyMatrix4(mesh.matrixWorld).project(camera);
+          if (projected.z > 1) return null;
+          return new THREE.Vector2(((projected.x + 1) / 2) * width, ((1 - projected.y) / 2) * height);
+        },
+        viewPoint: localEye,
+        rings: ringsRef.current,
+        isVisible,
+        pointer: pointerPx.set(pointer.x, pointer.y),
+        vertexTolerance: VERTEX_SNAP_PX,
+        edgeTolerance: EDGE_SNAP_PX,
+        surfaceCache: surfaceCacheRef.current,
+      };
+
+      // Nothing under the pointer does not mean nothing to pick: looking down a
+      // hole, the ray leaves through the far side, and the centre of that hole is
+      // exactly what is being pointed at.
       if (!hit || hit.faceIndex == null) {
-        showHover(null);
+        showHover(snapThroughGap(context));
         return;
       }
 
       mesh.worldToLocal(localHit.copy(hit.point));
-      mesh.worldToLocal(localEye.copy(camera.position));
-      showHover(
-        snapFeature(
-          {
-            topology,
-            project: (point) => {
-              projected.copy(point).applyMatrix4(mesh.matrixWorld).project(camera);
-              if (projected.z > 1) return null;
-              return new THREE.Vector2(((projected.x + 1) / 2) * width, ((1 - projected.y) / 2) * height);
-            },
-            viewPoint: localEye,
-            isVisible,
-            pointer: pointerPx.set(pointer.x, pointer.y),
-            vertexTolerance: VERTEX_SNAP_PX,
-            edgeTolerance: EDGE_SNAP_PX,
-            surfaceCache: surfaceCacheRef.current,
-          },
-          hit.faceIndex,
-          localHit,
-        ),
-      );
+      showHover(snapFeature(context, hit.faceIndex, localHit));
     };
 
     // Whether a point on the model is in view or hidden behind another part of
@@ -283,7 +313,10 @@ export function ModelViewer({ stl }: Props) {
     canvas.addEventListener('pointerdown', handlePointerDown);
     canvas.addEventListener('pointerup', handlePointerUp);
 
-    /** Keeps the floating dimension label over the middle of the line it names. */
+    /**
+     * Keeps the reading beside the middle of the line it names — offset clear of
+     * it by default, and wherever it has been dragged to after that.
+     */
     const positionLabel = () => {
       const label = labelRef.current;
       const mesh = meshRef.current;
@@ -299,8 +332,9 @@ export function ModelViewer({ stl }: Props) {
         label.style.visibility = 'hidden';
         return;
       }
-      const x = ((projected.x + 1) / 2) * container.clientWidth;
-      const y = ((1 - projected.y) / 2) * container.clientHeight;
+      const offset = labelOffsetRef.current;
+      const x = ((projected.x + 1) / 2) * container.clientWidth + offset.x;
+      const y = ((1 - projected.y) / 2) * container.clientHeight + offset.y;
       label.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
       label.style.visibility = 'visible';
     };
@@ -352,6 +386,7 @@ export function ModelViewer({ stl }: Props) {
     overlayRef.current?.dispose();
     overlayRef.current = null;
     topologyRef.current = null;
+    ringsRef.current = [];
     hoverRef.current = null;
     surfaceCacheRef.current = new Map();
     setPicks([null, null]);
@@ -404,6 +439,7 @@ export function ModelViewer({ stl }: Props) {
       if (cancelled) return;
       const topology = buildTopology(mesh.geometry);
       topologyRef.current = topology;
+      ringsRef.current = findRings(topology);
       surfaceCacheRef.current = new Map();
       const overlay = new MeasureOverlay(topology);
       overlay.group.position.copy(mesh.position);
@@ -420,6 +456,9 @@ export function ModelViewer({ stl }: Props) {
 
 
   useEffect(() => {
+    // A new measurement gets its label back beside the line, wherever the last
+    // one was dragged to.
+    labelOffsetRef.current = { x: 0, y: -26 };
     const overlay = overlayRef.current;
     if (!overlay) return;
     overlay.setPick(0, picks[0]);
@@ -475,7 +514,13 @@ export function ModelViewer({ stl }: Props) {
       </div>
 
       <div ref={hintRef} className="measure-hint" />
-      <div ref={labelRef} className="measure-label" hidden={!measurement}>
+      <div
+        ref={labelRef}
+        className="measure-label"
+        hidden={!measurement}
+        title="Drag to move"
+        onPointerDown={handleLabelPointerDown}
+      >
         {measurement?.primary.value}
       </div>
 
@@ -520,7 +565,7 @@ export function ModelViewer({ stl }: Props) {
 
               <p className="measure-note">
                 {picks[0] === null
-                  ? 'Click a corner, an edge, a face or a hole. Drag to rotate as usual.'
+                  ? 'Click a corner, an edge, a face or a hole — its middle is the centre, its rim the circle. Drag to rotate as usual.'
                   : picks[1] === null
                     ? 'Pick the second feature to measure between them.'
                     : 'Click anywhere to start the next measurement.'}

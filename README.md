@@ -69,7 +69,10 @@ rather than by being fattened until the letters merge.
   can see roughly how a design will sit on the plate.
 - **Measuring** — press **Measure** in the viewer and click any two things to get the distance
   between them: corner to corner, hole to hole, face to face. Hovering names what is under the
-  pointer and gives a hole its diameter before you even click. The STL the engine hands back is
+  pointer and gives a hole its diameter before you even click. A circle is two things to point at
+  and they measure differently: its middle is the centre, and measures from there, while its rim is
+  the ring itself, and measures from whatever part of the circle comes closest — so a hole against
+  the side of a plate tells you the wall left between them. The STL the engine hands back is
   loose triangles with none of that in it, so `src/viewer/meshTopology.ts` welds the corners back
   together and `src/viewer/measureFeatures.ts` reads the shape out of the result — a crease between
   two triangles is an edge, a ring of corners all the same distance from a common centre is a

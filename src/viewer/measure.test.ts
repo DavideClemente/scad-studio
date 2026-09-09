@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { buildTopology, faceCorner, faceNormal, vertexPosition } from './meshTopology';
 import type { Topology } from './meshTopology';
-import { circleFromLoop, fitCircle, snapFeature } from './measureFeatures';
+import { circleFromLoop, findRings, fitCircle, snapFeature, snapThroughGap } from './measureFeatures';
 import type { Feature } from './measureFeatures';
 import { describeFeature, measure } from './measure';
 
@@ -157,13 +157,20 @@ describe('snapping', () => {
   });
 
   it('ignores a spare vertex the triangulation left inside a face', () => {
-    // Three's cylinder caps are fans, so the middle of one is a vertex that the
-    // shape itself has no corner at.
-    const topology = soup(new THREE.CylinderGeometry(5, 5, 10, 32));
-    const face = faceFacing(topology, new THREE.Vector3(0, 1, 0));
-    const feature = pick(topology, face, centroid(topology, face), {
-      axes: ['x', 'z'],
-      at: new THREE.Vector3(0, 5, 0),
+    // A flat sheet cut into four, so the middle of it is a vertex the shape
+    // itself has no corner at — and no ring anywhere to offer a centre instead.
+    const points: number[] = [];
+    for (const [x0, x1] of [[-10, 0], [0, 10]]) {
+      for (const [y0, y1] of [[-10, 0], [0, 10]]) {
+        points.push(x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y0, 0, x1, y1, 0, x0, y1, 0);
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+    const topology = buildTopology(geometry);
+
+    const feature = pick(topology, 0, new THREE.Vector3(-3, -3, 0), {
+      at: new THREE.Vector3(0, 0, 0),
       vertexTolerance: 2,
       edgeTolerance: 0,
     });
@@ -197,6 +204,84 @@ describe('snapping', () => {
       expect(Math.abs(feature.normal.z)).toBeCloseTo(1, 6);
       expect(feature.circle).toBeUndefined();
     }
+  });
+});
+
+describe('picking a circle apart', () => {
+  const cylinder = () => soup(new THREE.CylinderGeometry(5, 5, 10, 32));
+
+  it('gives the centre when the middle of a round face is pointed at', () => {
+    const topology = cylinder();
+    const face = faceFacing(topology, new THREE.Vector3(0, 1, 0));
+    const feature = pick(topology, face, new THREE.Vector3(2, 5, 2), {
+      axes: ['x', 'z'],
+      at: new THREE.Vector3(0, 5, 0),
+      vertexTolerance: 1,
+    });
+    expect(feature.kind).toBe('point');
+    if (feature.kind === 'point') {
+      expect(feature.circle?.radius).toBeCloseTo(5, 4);
+      expect(feature.point.y).toBeCloseTo(5, 6);
+      expect(feature.point.x).toBeCloseTo(0, 6);
+    }
+  });
+
+  it('gives the circle itself out towards the rim', () => {
+    const topology = cylinder();
+    const face = faceFacing(topology, new THREE.Vector3(0, 1, 0));
+    const rim = new THREE.Vector3(0, 5, 5);
+    const feature = pick(topology, face, rim, {
+      axes: ['x', 'z'],
+      at: rim,
+      vertexTolerance: 1,
+      edgeTolerance: 1,
+    });
+    expect(feature.kind).toBe('circle');
+  });
+
+  it('finds every rim in the model up front', () => {
+    const topology = cylinder();
+    const rings = findRings(topology);
+    expect(rings).toHaveLength(2);
+    for (const ring of rings) expect(ring.radius).toBeCloseTo(5, 4);
+    expect(rings.map((r) => r.center.y).sort((a, b) => a - b)).toEqual([-5, 5]);
+  });
+
+  it('gives a hole its centre even when the ray goes straight through it', () => {
+    // Looking down the bore of a tube: there is nothing along that ray to hit,
+    // and the middle of the opening is exactly where a centre is meant.
+    const topology = cylinder();
+    const project = (point: THREE.Vector3) => new THREE.Vector2(point.x, point.z);
+    const feature = snapThroughGap({
+      topology,
+      project,
+      viewPoint: new THREE.Vector3(0, 1000, 0),
+      rings: findRings(topology),
+      pointer: new THREE.Vector2(0, 0),
+      vertexTolerance: 1,
+      edgeTolerance: 0,
+    });
+    expect(feature?.kind).toBe('point');
+    if (feature?.kind === 'point') {
+      expect(feature.circle?.radius).toBeCloseTo(5, 4);
+      // The near rim, not the one at the far end of the bore.
+      expect(feature.point.y).toBeCloseTo(5, 6);
+    }
+  });
+
+  it('offers the near end of a hole rather than the far one', () => {
+    // Both rims of a cylinder share an axis, so their centres sit on the same
+    // spot on screen; the one meant is the one nearest the viewer.
+    const topology = cylinder();
+    const face = faceFacing(topology, new THREE.Vector3(0, 1, 0));
+    const feature = pick(topology, face, new THREE.Vector3(2, 5, 2), {
+      axes: ['x', 'z'],
+      at: new THREE.Vector3(0, 5, 0),
+      vertexTolerance: 1,
+      from: new THREE.Vector3(0, 1000, 0),
+    });
+    expect(feature.kind).toBe('point');
+    if (feature.kind === 'point') expect(feature.point.y).toBeCloseTo(5, 6);
   });
 });
 
@@ -426,33 +511,102 @@ describe('measuring between features', () => {
     expect(result.primary.value).toBe('90.00°');
   });
 
-  it('measures hole to hole from the centres of two circles', () => {
-    const circle = (x: number): Feature => ({
-      kind: 'circle',
-      from: 'rim',
-      center: new THREE.Vector3(x, 0, 0),
-      radius: 1.5,
-      axis: new THREE.Vector3(0, 0, 1),
-      segments: 30,
-    });
-    const result = measure(circle(0), circle(25));
-    expect(result.primary.value).toBe('25.000 mm');
-    expect(describeFeature(circle(0)).rows[0]).toEqual({ label: 'Diameter', value: '3.000 mm' });
+  const ring = (x: number, radius = 1.5): Feature => ({
+    kind: 'circle',
+    from: 'rim',
+    center: new THREE.Vector3(x, 0, 0),
+    radius,
+    axis: new THREE.Vector3(0, 0, 1),
+    segments: 30,
   });
 
-  it('drops a perpendicular from a point onto an edge, and says when it misses', () => {
+  it('measures between two rings from the nearest point on each', () => {
+    const result = measure(ring(0), ring(25));
+    // 25 between the centres, less a radius at each end.
+    expect(result.primary.value).toBe('22.000 mm');
+    expect(result.primary.label).toBe('Between circles');
+    expect(result.rows).toContainEqual({ label: 'Between centres', value: '25.000 mm' });
+    expect(result.from.x).toBeCloseTo(1.5, 6);
+    expect(result.to.x).toBeCloseTo(23.5, 6);
+    expect(describeFeature(ring(0)).rows[0]).toEqual({ label: 'Diameter', value: '3.000 mm' });
+  });
+
+  it('measures hole to hole between centres when the centres are picked', () => {
+    const centre = (x: number): Feature => ({
+      kind: 'point',
+      point: new THREE.Vector3(x, 0, 0),
+      circle: { center: new THREE.Vector3(x, 0, 0), radius: 1.5, axis: new THREE.Vector3(0, 0, 1) },
+    });
+    const result = measure(centre(0), centre(25));
+    expect(result.primary.value).toBe('25.000 mm');
+    expect(describeFeature(centre(0)).name).toBe('Centre');
+  });
+
+  it('measures a ring against a face from the edge of the hole', () => {
+    const face: Feature = {
+      kind: 'plane',
+      point: new THREE.Vector3(10, 0, 0),
+      normal: new THREE.Vector3(1, 0, 0),
+      area: 100,
+      faces: [],
+    };
+    // The ring lies in a plane square to the face, so its nearest point is one
+    // radius nearer than its centre.
+    const result = measure(ring(0, 2.5), face);
+    expect(result.primary.label).toBe('Distance to face');
+    expect(result.primary.value).toBe('7.500 mm');
+    expect(result.rows).toContainEqual({ label: 'From the centre', value: '10.000 mm' });
+  });
+
+  it('measures a ring against an edge, which has no closed form', () => {
+    const edge: Feature = {
+      kind: 'edge',
+      a: new THREE.Vector3(9, -5, 0),
+      b: new THREE.Vector3(9, 5, 0),
+    };
+    // The edge runs parallel to the ring's plane, 9 out from its centre.
+    const result = measure(ring(0, 2), edge);
+    expect(result.primary.label).toBe('Distance to edge');
+    expect(result.primary.value).toBe('7.000 mm');
+  });
+
+  it('measures to an edge itself, not to where its line would have gone', () => {
     const edge: Feature = {
       kind: 'edge',
       a: new THREE.Vector3(0, 0, 0),
       b: new THREE.Vector3(10, 0, 0),
     };
-    const inside = measure(point(4, 3, 0), edge);
-    expect(inside.primary.value).toBe('3.000 mm');
-    expect(inside.rows).toHaveLength(0);
+    // Alongside the edge, the perpendicular is the answer.
+    expect(measure(point(4, 3, 0), edge).primary.value).toBe('3.000 mm');
 
+    // Past its end, the answer runs to the end — 3 across and 4 beyond. Carrying
+    // the line on would have said 3.000, which is a distance to something that is
+    // not there.
     const beyond = measure(point(14, 3, 0), edge);
-    expect(beyond.primary.value).toBe('3.000 mm');
-    expect(beyond.rows[0]).toEqual({ label: 'To nearest end', value: '5.000 mm' });
+    expect(beyond.primary.value).toBe('5.000 mm');
+    expect(beyond.to.x).toBeCloseTo(10, 6);
+  });
+
+  it('measures a ring to an edge that stops short of it', () => {
+    const edge: Feature = {
+      kind: 'edge',
+      a: new THREE.Vector3(6, 8, 0),
+      b: new THREE.Vector3(6, 18, 0),
+    };
+    // The nearest point of the edge is its end, 10 from the centre of a ring of
+    // radius 5 — so 5 from the ring itself.
+    const result = measure(ring(0, 5), edge);
+    expect(result.primary.value).toBe('5.000 mm');
+    expect(result.rows).toContainEqual({ label: 'From the centre', value: '10.000 mm' });
+    expect(result.to.y).toBeCloseTo(8, 6);
+  });
+
+  it('measures two edges that pass each other from their nearest ends', () => {
+    const along: Feature = { kind: 'edge', a: new THREE.Vector3(0, 0, 0), b: new THREE.Vector3(10, 0, 0) };
+    const across: Feature = { kind: 'edge', a: new THREE.Vector3(16, 0, 0), b: new THREE.Vector3(16, 10, 0) };
+    const result = measure(along, across);
+    expect(result.primary.label).toBe('Angle between edges');
+    expect(result.rows[0]).toEqual({ label: 'Closest approach', value: '6.000 mm' });
   });
 
   it('reports point coordinates in the space the design was written in', () => {

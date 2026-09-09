@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Feature } from './measureFeatures';
+import type { Circle, Feature } from './measureFeatures';
 import { faceCorner, vertexPosition } from './meshTopology';
 import type { Topology } from './meshTopology';
 
@@ -134,30 +134,33 @@ export class MeasureOverlay {
     return mesh;
   }
 
+  /** A circle, drawn as a torus lying in the circle's own plane. */
+  private ring(circle: Circle, radius: number, material: THREE.Material): THREE.Mesh {
+    const mesh = new THREE.Mesh(new THREE.TorusGeometry(circle.radius, radius, 8, 128), material);
+    mesh.position.copy(circle.center);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), circle.axis.clone().normalize());
+    return mesh;
+  }
+
   private build(feature: Feature, picked: boolean): THREE.Object3D {
     const material = picked ? this.pickMaterial : this.hoverMaterial;
     switch (feature.kind) {
       case 'point': {
         const mesh = new THREE.Mesh(new THREE.SphereGeometry(this.markerRadius, 16, 12), material);
         mesh.position.copy(feature.point);
-        return mesh;
+        if (!feature.circle) return mesh;
+        // The centre of a circle is a place with nothing at it, so the circle it
+        // belongs to is drawn behind it, thin enough not to be mistaken for a
+        // pick of the ring itself.
+        const group = new THREE.Group();
+        group.add(mesh);
+        group.add(this.ring(feature.circle, this.lineRadius * 0.55, material));
+        return group;
       }
       case 'edge':
         return this.rod(feature.a, feature.b, this.lineRadius * 1.4, material);
-      case 'circle': {
-        const ring = new THREE.Mesh(
-          new THREE.TorusGeometry(feature.radius, this.lineRadius * 1.4, 8, 128),
-          material,
-        );
-        ring.position.copy(feature.center);
-        ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), feature.axis.clone().normalize());
-        const group = new THREE.Group();
-        group.add(ring);
-        const center = new THREE.Mesh(new THREE.SphereGeometry(this.markerRadius * 0.7, 12, 8), material);
-        center.position.copy(feature.center);
-        group.add(center);
-        return group;
-      }
+      case 'circle':
+        return this.ring(feature, this.lineRadius * 1.4, material);
       case 'plane':
         return this.faceHighlight(feature.faces, picked ? this.pickFaceMaterial : this.hoverFaceMaterial);
     }

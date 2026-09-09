@@ -297,6 +297,16 @@
   color: #14161b;
   background: #ffffff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  /* The one thing over the model worth grabbing: a reading sitting on top of the
+     line it measures is no use, so it can be pulled aside. */
+  pointer-events: auto;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.measure-label:active {
+  cursor: grabbing;
 }
 
 .measure-label[hidden] {

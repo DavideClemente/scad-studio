@@ -47,9 +47,10 @@ export type Circle = {
 };
 
 export type Feature =
-  | { kind: 'point'; point: THREE.Vector3 }
+  /** A place: a corner of the shape, or the centre of one of its circles. */
+  | { kind: 'point'; point: THREE.Vector3; circle?: Circle }
   | { kind: 'edge'; a: THREE.Vector3; b: THREE.Vector3 }
-  | ({ kind: 'circle'; from: 'rim' | 'cylinder'; faces?: number[] } & Circle)
+  | ({ kind: 'circle'; from: 'rim' | 'cylinder'; faces?: number[]; rings?: Circle[] } & Circle)
   | {
       kind: 'plane';
       point: THREE.Vector3;
@@ -60,6 +61,9 @@ export type Feature =
       circle?: Circle;
       /** Every ring bounding the face — a plate with holes has several. */
       rings?: Circle[];
+      // Rings matter twice over: they say how wide a round face is, and their
+      // centres are places in their own right, which is the only way to point at
+      // the middle of a hole — there is nothing there to hit.
     };
 
 export type SnapContext = {
@@ -79,6 +83,8 @@ export type SnapContext = {
   vertexTolerance: number;
   /** The same, for an edge. Looser than a corner so corners win where they meet. */
   edgeTolerance: number;
+  /** Every circle in the model, so a centre can be pointed at through a hole. */
+  rings?: Circle[];
   /**
    * Whether a point on the model can actually be seen from where it is being
    * looked at, rather than sitting behind some other part of it.
@@ -178,7 +184,7 @@ function solve3(m: number[], rhs: number[]): [number, number, number] | null {
 }
 
 /** A pair of unit vectors spanning the plane perpendicular to `axis`. */
-function basisFor(axis: THREE.Vector3): [THREE.Vector3, THREE.Vector3] {
+export function basisFor(axis: THREE.Vector3): [THREE.Vector3, THREE.Vector3] {
   const u = new THREE.Vector3(1, 0, 0);
   if (Math.abs(axis.x) > 0.9) u.set(0, 1, 0);
   u.crossVectors(axis, u).normalize();
@@ -379,6 +385,22 @@ function boundaryLoops(topology: Topology, region: number[]): number[][] {
     if (current === start && loop.length >= 3) loops.push(loop);
   }
   return loops;
+}
+
+/**
+ * The circles bounding a patch of surface: the rim of a hole, the base of a
+ * boss, the outline of a round face. Fitted once with the surface and carried
+ * with it — which one answers a given pick is settled later, by where the
+ * pointer is.
+ */
+function ringsAround(topology: Topology, region: number[]): Circle[] {
+  const rings: Circle[] = [];
+  for (const loop of boundaryLoops(topology, region)) {
+    const points = loop.map((vertex) => vertexPosition(topology, vertex, new THREE.Vector3()));
+    const fitted = circleFromLoop(points);
+    if (fitted) rings.push(fitted);
+  }
+  return rings;
 }
 
 function regionArea(topology: Topology, region: number[]): number {
@@ -585,6 +607,9 @@ function snapSurface(ctx: SnapContext, face: number, hit: THREE.Vector3): Featur
       radius: cylinder.radius,
       axis: cylinder.axis,
       faces: smooth,
+      // The rims at either end of it, which is where a hole's centre comes from
+      // when the pointer is over the opening rather than the wall.
+      rings: ringsAround(topology, smooth),
     };
     return remember(ctx, smooth, found, hit);
   }
@@ -592,16 +617,7 @@ function snapSurface(ctx: SnapContext, face: number, hit: THREE.Vector3): Featur
   const region = planarRegion(topology, face);
   const normal = faceNormal(topology, face, new THREE.Vector3());
 
-  // A round face is still a face — it measures plane to plane — but its radius is
-  // the number most likely being looked for, so every ring around it is fitted
-  // and carried along. Which one answers is settled per click, not here: on a
-  // plate with two holes the ring meant is the one under the pointer.
-  const rings: Circle[] = [];
-  for (const loop of boundaryLoops(topology, region)) {
-    const points = loop.map((vertex) => vertexPosition(topology, vertex, new THREE.Vector3()));
-    const fitted = circleFromLoop(points);
-    if (fitted) rings.push(fitted);
-  }
+  const rings = ringsAround(topology, region);
 
   const found: Feature = {
     kind: 'plane',
@@ -662,17 +678,110 @@ function placeOnSurface(feature: Feature, hit: THREE.Vector3): Feature {
 }
 
 /**
- * What the pointer is on: the nearest corner, else the nearest edge, else the
- * surface itself. Corners beat edges beat surfaces because that is the order of
- * how precisely each one names a place, and the pointer can only be near a corner
- * by being near its edges and face too.
+ * Every circle in the model, found once when the tool starts.
+ *
+ * A centre has to be reachable without anything being under the pointer: looking
+ * straight down a hole, the ray goes clean through and hits nothing at all, and
+ * the middle of a hole is exactly where someone points to mean its centre. So the
+ * rims are all found up front rather than being discovered from whatever the ray
+ * happened to land on.
+ */
+export function findRings(topology: Topology): Circle[] {
+  const rings: Circle[] = [];
+  const walked = new Set<string>();
+  const key = (a: number, b: number) => (a < b ? `${a}_${b}` : `${b}_${a}`);
+
+  for (let face = 0; face < topology.faceCount; face++) {
+    for (let c = 0; c < 3; c++) {
+      if (!isSharp(topology, face, c)) continue;
+      const from = faceCorner(topology, face, c);
+      const to = faceCorner(topology, face, (c + 1) % 3);
+      if (walked.has(key(from, to))) continue;
+
+      const chain = walkSharpChain(topology, from, to);
+      // Every edge of the trail is marked, closed or not, so each one is walked
+      // once rather than once per edge along it.
+      for (let i = 0; i < chain.vertices.length; i++) {
+        const next = chain.vertices[(i + 1) % chain.vertices.length];
+        if (i + 1 < chain.vertices.length || chain.closed) walked.add(key(chain.vertices[i], next));
+      }
+      if (!chain.closed) continue;
+
+      const points = chain.vertices.map((vertex) => vertexPosition(topology, vertex, new THREE.Vector3()));
+      const circle = circleFromLoop(points);
+      if (circle) rings.push(circle);
+    }
+  }
+  return rings;
+}
+
+/** The rings a surface carries, whichever kind of surface it turned out to be. */
+function ringsOf(feature: Feature): Circle[] {
+  if (feature.kind === 'plane' || feature.kind === 'circle') return feature.rings ?? [];
+  return [];
+}
+
+/**
+ * The centre of a circle near the pointer.
+ *
+ * A centre is a place with nothing at it — the middle of a hole is a hole — so
+ * it can only be offered by the surface that knows the circle: the face the ring
+ * bounds, or the wall it caps. Being able to point at it is what makes hole to
+ * hole a measurement of two clicks rather than a hunt along two rims.
+ */
+function snapRingCentre(ctx: SnapContext, surface: Feature | null): Feature | null {
+  let best: Circle | null = null;
+  let bestDepth = Infinity;
+  const tolerance = ctx.vertexTolerance * ctx.vertexTolerance;
+
+  // The model's own rings, and the ones bounding the surface under the pointer —
+  // a rim between two faces that meet almost flat is a ring the sharp-edge sweep
+  // never sees, but the face it bounds still knows about it.
+  for (const ring of [...(ctx.rings ?? []), ...(surface ? ringsOf(surface) : [])]) {
+    const screen = ctx.project(ring.center);
+    if (!screen || screen.distanceToSquared(ctx.pointer) > tolerance) continue;
+    if (ctx.isVisible && !ctx.isVisible(ring.center)) continue;
+    // The two ends of a hole are coaxial, so their centres land on the same few
+    // pixels; the one being pointed at is the one at the near end. Rings sharing
+    // an end — a bore inside a boss — go to the tighter of the two.
+    const depth = ring.center.distanceToSquared(ctx.viewPoint);
+    if (depth < bestDepth || (best !== null && depth === bestDepth && ring.radius < best.radius)) {
+      bestDepth = depth;
+      best = ring;
+    }
+  }
+
+  return best ? { kind: 'point', point: best.center.clone(), circle: best } : null;
+}
+
+/**
+ * What the pointer is over when the ray found nothing to hit: a circle's centre,
+ * seen through the hole it belongs to, or nothing at all.
+ */
+export function snapThroughGap(ctx: SnapContext): Feature | null {
+  return snapRingCentre(ctx, null);
+}
+
+/**
+ * What the pointer is on: the nearest corner, else the centre of a circle, else
+ * the nearest edge, else the surface itself. That is the order of how precisely
+ * each one names a place, and the pointer can only be near a corner by being near
+ * its edges and face too.
  */
 export function snapFeature(ctx: SnapContext, face: number, hit: THREE.Vector3): Feature {
+  // Worked out first because the centres below come from the rings it carries.
+  // It is the expensive one, but it is also cached across a whole surface, so
+  // asking early costs nothing after the first look at a given face.
+  const surface = snapSurface(ctx, face, hit);
+
   const vertex = snapVertex(ctx, face);
   if (vertex) return { kind: 'point', point: vertex };
+
+  const centre = snapRingCentre(ctx, surface);
+  if (centre) return centre;
 
   const edge = snapEdge(ctx, face);
   if (edge) return edge;
 
-  return snapSurface(ctx, face, hit);
+  return surface;
 }
