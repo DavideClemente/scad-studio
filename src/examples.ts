@@ -54,6 +54,68 @@ linear_extrude(height = 10)
 `,
   },
   {
+    id: 'measuring-block',
+    name: 'Measuring block',
+    source: `// A block with one of every feature the Measure tool can pick, and every
+// answer known in advance. Nothing here is parametric on purpose: the numbers in
+// the comments are what the readout should say, so a wrong reading is obvious
+// rather than merely plausible.
+
+$fn = 60;   // so holes and bosses report "Segments 60"
+
+difference() {
+  union() {
+    // Plate: corners at (±30, ±20, ±4).
+    //   long edge 60.000, short edge 40.000, top to bottom 8.000
+    //   corner to opposite corner across the top face   72.111
+    cube([60, 40, 8], center = true);
+
+    // Boss: outer wall ⌀18, top at z = 18.
+    //   plate top to boss top   14.000
+    translate([0, 0, 4]) cylinder(h = 14, r = 9);
+
+    // Pin: ⌀10, top at z = 14.
+    //   plate top to pin top    10.000
+    //   pin top to boss top      4.000
+    translate([-20, -13, 4]) cylinder(h = 10, r = 5);
+
+    // Wedge: 14 of run rising 8.083, so its slope is exactly 30°.
+    //   sloped face to plate top                      30.00°
+    //   sloped face to its own back face (at x = 14)  60.00°
+    translate([14, 6, 4])
+      rotate([90, 0, 0])
+        linear_extrude(height = 12)
+          polygon([[0, 0], [14, 0], [0, 8.083]]);
+  }
+
+  // Bore down the middle of the boss: ⌀8, floor at z = 4.
+  //   boss top to bore floor   14.000
+  translate([0, 0, 4]) cylinder(h = 30, r = 4);
+
+  // Two through holes, ⌀5, at (-22, 12) and (22, -12).
+  translate([-22, 12, 0]) cylinder(h = 30, r = 2.5, center = true);
+  translate([22, -12, 0]) cylinder(h = 30, r = 2.5, center = true);
+}
+
+// Press Measure, then try pointing at:
+//
+//   a hole                    Circle ⌀5.000 mm, before clicking anything
+//   the middle of one         Centre ⌀5.000 mm - a hole's centre is a place too
+//   the pin's curved side     Cylinder ⌀10.000 mm
+//   the plate's top           Round face - the ring nearest the pointer, so
+//                             ⌀18.000 by the boss and ⌀5.000 by a hole
+//
+// and then at two things:
+//
+//   both hole centres         50.120 mm, with ΔX 44.000 and ΔY -24.000
+//   both hole rims            45.120 mm between circles, 50.120 between centres
+//   plate top, then boss top  14.000 mm between faces
+//   sloped face, plate top    30.00° between faces
+//   two opposite corners      60.000 mm along an edge, 72.111 across the face
+//   one corner on its own     its X/Y/Z in the coordinates this file uses
+`,
+  },
+  {
     id: 'toothed-wheel',
     name: 'Toothed wheel',
     source: `// A simple toothed wheel silhouette, built with a for loop.

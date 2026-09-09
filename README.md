@@ -33,6 +33,18 @@ particular file.
   It compiles your `.scad` source straight to an STL.
 - **Viewer** — a Three.js scene (`src/viewer/ModelViewer.tsx`) with a 220mm print-bed grid, so you
   can see roughly how a design will sit on the plate.
+- **Measuring** — press **Measure** in the viewer and click any two things to get the distance
+  between them: corner to corner, hole to hole, face to face. Hovering names what is under the
+  pointer and gives a hole its diameter before you even click. A circle is two things to point at
+  and they measure differently: its middle is the centre, and measures from there, while its rim is
+  the ring itself, and measures from whatever part of the circle comes closest — so a hole against
+  the side of a plate tells you the wall left between them. The STL the engine hands back is
+  loose triangles with none of that in it, so `src/viewer/meshTopology.ts` welds the corners back
+  together and `src/viewer/measureFeatures.ts` reads the shape out of the result — a crease between
+  two triangles is an edge, a ring of corners all the same distance from a common centre is a
+  circle, triangles sharing a plane are a face. `src/viewer/measure.ts` then decides what a given
+  pair of picks is asking: two faces want a distance if they are parallel and an angle if they are
+  not.
 - **Text** — the WASM engine ships without any fonts, so the worker mounts the ones in
   `public/fonts/` into its virtual filesystem along with a `fonts.conf` before each render.
   It also enables OpenSCAD's `textmetrics()`, which is how a design can measure its own
