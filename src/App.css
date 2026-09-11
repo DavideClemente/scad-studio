@@ -7,6 +7,10 @@
 .toolbar {
   display: flex;
   align-items: center;
+  /* Out of room, the bar takes a second line rather than grinding every badge
+     down to an ellipsis and a dot. */
+  flex-wrap: wrap;
+  row-gap: 8px;
   gap: 16px;
   padding: 8px 12px;
   background: var(--bg-panel);
@@ -21,6 +25,8 @@
 .toolbar-brand {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
   gap: 6px;
   appearance: none;
   border: none;
@@ -52,7 +58,7 @@
   z-index: 10;
   display: flex;
   flex-direction: column;
-  min-width: 140px;
+  min-width: 180px;
   padding: 4px;
   background: var(--bg-raised);
   border: 1px solid var(--border);
@@ -67,9 +73,20 @@
   color: var(--text);
   font: inherit;
   text-align: left;
+  white-space: nowrap;
   padding: 6px 10px;
   border-radius: 5px;
   cursor: pointer;
+}
+
+.dropdown-item:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.dropdown-item:disabled:hover {
+  background: none;
+  color: var(--text-dim);
 }
 
 .dropdown-item:hover {
@@ -85,6 +102,31 @@
 
 .toolbar-group-right {
   margin-left: auto;
+  min-width: 0;
+}
+
+/* With a project open, a design followed, a note, the piece count and the status
+   all in the bar at once, something has to give. It is never the buttons or the
+   brand — a Render button squeezed to two lines is worse than a truncated name. */
+.toolbar .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.toolbar .link-name,
+.toolbar .project-name-badge {
+  min-width: 0;
+  max-width: 200px;
+}
+
+/* A name long enough to push the toolbar around is cut short instead. It has to
+   be an element of its own: a bare text node inside a flex row becomes an
+   anonymous item, and there is nothing there to give an overflow rule to. */
+.badge-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .btn {
@@ -273,6 +315,7 @@
 }
 
 .shells {
+  white-space: nowrap;
   font-size: 12px;
   padding: 3px 8px;
   border-radius: 999px;
@@ -294,16 +337,29 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 5px;
   cursor: help;
-  outline: none;
+}
+
+/* Tabbing here pops the tooltip, so it has to be obvious which badge it belongs
+   to. Only for keyboard focus — a click should not leave a ring behind. */
+.info-badge:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .info-badge-icon {
+  flex-shrink: 0;
   font-size: 11px;
   opacity: 0.6;
 }
 
 .info-badge-tooltip {
+  /* The badge above may set nowrap for its own label; the sentence in here has
+     to wrap regardless, or it runs off the side of the window. */
+  white-space: normal;
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
@@ -343,6 +399,7 @@
 }
 
 .link-dot {
+  flex-shrink: 0;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -350,8 +407,52 @@
 }
 
 .link-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
   font-size: 12px;
-  color: var(--accent);
+  font-weight: 500;
+  color: var(--accent-strong);
+  animation: note-in 0.18s ease-out;
+}
+
+.link-note::before {
+  content: '✓';
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+@keyframes note-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .link-note {
+    animation: none;
+  }
+}
+
+/* A copy, not a link: no live dot, and a mark saying it is a copy. */
+.origin-mark {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: var(--text-dim);
+  stroke-width: 1.2;
+  stroke-linecap: round;
 }
 
 .link-conflict {
@@ -506,4 +607,204 @@
   margin: 0;
   color: var(--text-dim);
   line-height: 1.35;
+}
+
+.dropdown-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+.project-name-badge {
+  color: var(--text-dim);
+}
+
+/* Says the editor has gone past what the project holds; the badge's tooltip
+   spells out what that means. */
+.project-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.project-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(560px, 100%);
+  max-height: 100%;
+  padding: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.modal-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.modal-empty,
+.modal-footnote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.project-row:hover {
+  background: var(--bg-raised);
+}
+
+.project-row.is-open {
+  border-color: var(--border);
+}
+
+.project-open {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  appearance: none;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.project-open:hover .project-name {
+  color: var(--accent);
+}
+
+.project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* ---- the app's own confirm / prompt ---- */
+
+.modal-ask {
+  width: min(420px, 100%);
+  gap: 14px;
+}
+
+.modal-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.field-input {
+  appearance: none;
+  padding: 8px 10px;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field-input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #1a0805;
+  font-weight: 600;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, white);
+  border-color: color-mix(in srgb, var(--danger) 85%, white);
 }
