@@ -66,3 +66,28 @@ export function saveEditorDirty(dirty: boolean) {
     // Same as the autosave: a convenience, not a guarantee.
   }
 }
+
+const OPEN_PROJECT_KEY = 'scad-studio:open-project';
+
+/**
+ * Id of the saved project the editor was working on, so a reload knows what a
+ * later "Save" should overwrite. Only the id: the text itself comes back from the
+ * autosave above, which is the newer of the two and the one the user was looking
+ * at.
+ */
+export function loadOpenProject(): string | null {
+  try {
+    return localStorage.getItem(OPEN_PROJECT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveOpenProject(projectId: string | null) {
+  try {
+    if (projectId === null) localStorage.removeItem(OPEN_PROJECT_KEY);
+    else localStorage.setItem(OPEN_PROJECT_KEY, projectId);
+  } catch {
+    // Same as the autosave: a convenience, not a guarantee.
+  }
+}
