@@ -13,7 +13,20 @@ type Props = {
   onOpenSource: (source: string, name: string) => void;
   onSaveScad: () => void;
   onDownloadStl: () => void;
-  onSelectExample: (source: string) => void;
+  /** Saves the editor's text into the open project, or asks for a name if there is none. */
+  onSaveProject: () => void;
+  onSaveProjectAs: () => void;
+  onOpenProjects: () => void;
+  /** Name of the open saved project, if the editor is working on one. */
+  projectName: string | null;
+  /** The editor's text has moved on from what that project holds. */
+  projectModified: boolean;
+  /** Whether storage will accept a save at all. */
+  projectsWritable: boolean;
+  /** A storage operation that failed, worth showing until dismissed. */
+  projectError: string | null;
+  onDismissProjectError: () => void;
+  onSelectExample: (source: string, name: string) => void;
   /** Separate solids in the last render; more than one means the model isn't a single connected piece. */
   shells: number | null;
   /** The .scad files in designs/, which the dev server watches. Empty in a build. */
@@ -21,6 +34,8 @@ type Props = {
   onOpenDesign: (path: string) => void;
   /** The design the editor is following, if any. */
   openDesign: string | null;
+  /** Where the text was copied from, when it was copied rather than linked. */
+  origin: { kind: 'file' | 'example'; name: string } | null;
   /** Something that just happened to the link, worth a line for a few seconds. */
   linkNote: string | null;
   /** The linked file changed while the editor held edits of its own. */
@@ -55,11 +70,20 @@ export function Toolbar({
   onOpenSource,
   onSaveScad,
   onDownloadStl,
+  onSaveProject,
+  onSaveProjectAs,
+  onOpenProjects,
+  projectName,
+  projectModified,
+  projectsWritable,
+  projectError,
+  onDismissProjectError,
   onSelectExample,
   shells,
   designs,
   onOpenDesign,
   openDesign,
+  origin,
   linkNote,
   conflict,
   onTakeDisk,
@@ -95,7 +119,7 @@ export function Toolbar({
           onClick={() => setMenuOpen((open) => !open)}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
-          title="New, Open, Save"
+          title="New, Open, Save, Projects"
         >
           Scad Studio
           <span className="brand-caret">▾</span>
@@ -120,7 +144,7 @@ export function Toolbar({
                 setMenuOpen(false);
               }}
             >
-              Open
+              Open file…
             </button>
             <button
               className="dropdown-item"
@@ -130,7 +154,41 @@ export function Toolbar({
                 setMenuOpen(false);
               }}
             >
-              Save
+              Download .scad
+            </button>
+            <div className="dropdown-separator" role="separator" />
+            <button
+              className="dropdown-item"
+              role="menuitem"
+              disabled={!projectsWritable}
+              title={projectsWritable ? 'Ctrl/Cmd+S' : 'This browser is not allowing pages to store data.'}
+              onClick={() => {
+                onSaveProject();
+                setMenuOpen(false);
+              }}
+            >
+              {projectName ? `Save “${projectName}”` : 'Save project…'}
+            </button>
+            <button
+              className="dropdown-item"
+              role="menuitem"
+              disabled={!projectsWritable}
+              onClick={() => {
+                onSaveProjectAs();
+                setMenuOpen(false);
+              }}
+            >
+              Save as new project…
+            </button>
+            <button
+              className="dropdown-item"
+              role="menuitem"
+              onClick={() => {
+                onOpenProjects();
+                setMenuOpen(false);
+              }}
+            >
+              Projects…
             </button>
           </div>
         )}
@@ -163,7 +221,7 @@ export function Toolbar({
           defaultValue=""
           onChange={(event) => {
             const example = EXAMPLES.find((item) => item.id === event.target.value);
-            if (example) onSelectExample(example.source);
+            if (example) onSelectExample(example.source, example.name);
             event.target.value = '';
           }}
         >
@@ -179,6 +237,27 @@ export function Toolbar({
       </div>
 
       <div className="toolbar-group toolbar-group-right">
+        {projectError && (
+          <span className="project-error">
+            {projectError}
+            <button className="btn btn-small" onClick={onDismissProjectError}>
+              Dismiss
+            </button>
+          </span>
+        )}
+        {projectName && (
+          <InfoBadge
+            className="project-name-badge"
+            info={
+              projectModified
+                ? `Working on the saved project “${projectName}”, with changes that are not saved yet. Ctrl/Cmd+S saves them.`
+                : `Working on the saved project “${projectName}”. It matches what is saved.`
+            }
+          >
+            <span className="badge-text">{projectName}</span>
+            {projectModified && <span className="project-dot" aria-label="unsaved changes" />}
+          </InfoBadge>
+        )}
         {conflict ? (
           <span className="link-conflict">
             {openDesign} changed on disk, and so did this editor.
@@ -198,7 +277,27 @@ export function Toolbar({
             info={`Following designs/${openDesign}. Changes to it on disk land here; press Render to build them.`}
           >
             <span className="link-dot" />
-            {openDesign}
+            <span className="badge-text">{openDesign}</span>
+          </InfoBadge>
+        )}
+        {!openDesign && origin && (
+          <InfoBadge
+            className="link-name origin-name"
+            info={
+              origin.kind === 'file'
+                ? `Copied from the file ${origin.name}. Nothing here is written back to it — save a project, or use Download .scad.`
+                : `Copied from the ${origin.name} example. Edit it freely; the example itself is unchanged.`
+            }
+          >
+            {/* One mark for every copy, whatever it was copied from: what matters
+                at a glance is "nothing is written back", and the tooltip says
+                where it came from. Drawn rather than a glyph, since copy symbols
+                are missing from enough system fonts to fall back to a box. */}
+            <svg className="origin-mark" viewBox="0 0 12 12" aria-hidden="true">
+              <rect x="3.5" y="3.5" width="7" height="7" rx="1.2" />
+              <path d="M8.5 1.5h-6a1 1 0 0 0-1 1v6" />
+            </svg>
+            <span className="badge-text">{origin.name}</span>
           </InfoBadge>
         )}
         {status === 'success' && shells != null && (

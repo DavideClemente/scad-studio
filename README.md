@@ -7,6 +7,24 @@ the browser, spin the model around on a virtual print bed, and export an STL rea
 Everything runs client-side: the actual OpenSCAD engine is compiled to WebAssembly and executes in
 a Web Worker, so nothing is uploaded anywhere.
 
+## Saved projects
+
+**Scad Studio → Projects…** keeps designs inside the app, so work survives closing the
+tab. Ctrl/Cmd+S saves the one you are on; the toolbar shows its name, with a dot when
+the editor has gone past what is saved.
+
+Where they are saved is decided at startup and nowhere else: with no backend
+configured — which is every self-hosted build — projects live in the browser, on that
+machine, and clearing site data removes them. `src/projects/types.ts` is the whole
+interface storage has to satisfy, `src/projects/localAdapter.ts` is the browser
+implementation, and `src/projects/adapter.ts` picks between them. Nothing above that
+seam knows which one it got.
+
+This is separate from the designs folder below: a project is stored by the app, a
+design is a file on disk that the dev server watches. Opening either one leaves the
+other behind, since the text that arrives is not the other one's — but saving keeps
+following the file, so you can keep a copy in the app without giving up the link.
+
 ## Designs folder
 
 `designs/` is where you keep your own `.scad` files to iterate on. It's git-ignored —
@@ -51,6 +69,11 @@ particular file.
   lettering and scale it to fit.
 - **Printability** — `src/openscad/meshCheck.ts` runs union-find over the STL's shared
   vertices to count disconnected solids.
+- **Saved projects** — `src/projects/` holds a small storage interface, a
+  browser-backed implementation of it, and a React context so the editor never talks to
+  storage directly. `VITE_CLOUD_API_URL`, or a `window.__SCAD_STUDIO_CONFIG__.cloudApiUrl`
+  set by whatever serves the page, is where a backend would be named; unset, which is the
+  default, means the browser-only adapter.
 - **Following a file** — `vite/scadDesigns.ts` is a dev-server plugin that lists `designs/`,
   serves a design on request, and pushes the new text down Vite's own hot-update socket when
   one changes on disk. `src/designs.ts` is the browser side of it. None of it exists in a
@@ -116,7 +139,8 @@ npm run dev
 ```
 
 Then open the printed local URL. Press **Render** (or `Cmd/Ctrl+Enter` while editing) to compile
-your design, and **Download STL** to save the result for your slicer.
+your design, and **Download STL** to save the result for your slicer. `Cmd/Ctrl+S` saves the
+design as a project in the browser; **Download .scad** writes it out as a file instead.
 
 `npm run setup` only needs to run once — the engine is vendored into `public/openscad/`, which is
 git-ignored since it's a large prebuilt binary you can always re-fetch.

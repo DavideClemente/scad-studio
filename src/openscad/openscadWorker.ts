@@ -103,6 +103,18 @@ function mountFonts(instance: OpenScadModule, fonts: Map<string, Uint8Array>) {
   instance.ENV.HOME = '/tmp';
 }
 
+/**
+ * Lines the engine prints on every single run, about parts of itself this build
+ * never uses. They say nothing about the design being rendered, and leaving them
+ * in means the console opens with the same noise every time and the user learns
+ * to skim past it — including past the lines that do matter.
+ */
+const ENGINE_NOISE = [/^Could not initialize localization/];
+
+function isEngineNoise(line: string): boolean {
+  return ENGINE_NOISE.some((pattern) => pattern.test(line.trim()));
+}
+
 async function runRender(source: string) {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -111,7 +123,9 @@ async function runRender(source: string) {
   const instance = await OpenSCAD({
     noInitialRun: true,
     print: (text: string) => stdout.push(text),
-    printErr: (text: string) => stderr.push(text),
+    printErr: (text: string) => {
+      if (!isEngineNoise(text)) stderr.push(text);
+    },
   });
 
   mountFonts(instance, fonts);

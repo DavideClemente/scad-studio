@@ -28,3 +28,6 @@ public/openscad/
 
 # Personal .scad designs the dev server follows on disk; never committed
 designs/
+
+# Claude Code's local settings and worktrees
+.claude/

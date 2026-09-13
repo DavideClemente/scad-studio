@@ -15,9 +15,18 @@ import {
   saveOpenDesign,
 } from './storage';
 import { listDesigns, loadDesign, onDesignChanged } from './designs';
+import { useProjects } from './projects/context';
+import { freeName, isNameTaken } from './projects/names';
+import { ProjectsDialog } from './components/ProjectsDialog';
+import { useDialog } from './components/dialogContext';
 import './App.css';
 
 type Status = 'idle' | 'rendering' | 'success' | 'error';
+
+/** A file or design path as a name a project could sensibly take. */
+function bareName(path: string): string {
+  return path.replace(/\.scad$/i, '').split('/').pop() || 'Untitled';
+}
 
 function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -56,6 +65,13 @@ export default function App() {
   openDesignRef.current = openDesign;
   const [isResizing, setIsResizing] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const projects = useProjects();
+  const dialog = useDialog();
+  const [projectsDialogOpen, setProjectsDialogOpen] = useState(false);
+  // Where the editor's text came from when it is a copy rather than a link: a
+  // file picked from disk, or an example. Not remembered across a reload — the
+  // autosave brings the text back, but nothing can point at where it came from.
+  const [origin, setOrigin] = useState<{ kind: 'file' | 'example'; name: string } | null>(null);
 
   // Created once for the lifetime of the page (not disposed on unmount): App
   // never unmounts in practice, and disposing from a useEffect cleanup would
@@ -146,27 +162,43 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [handleRender]);
 
-  const handleNew = useCallback(() => {
-    if (source.trim() && !confirm('Discard the current design and start a blank one?')) return;
+  const handleNew = useCallback(async () => {
+    if (source.trim()) {
+      const discard = await dialog.confirm({
+        title: 'Start a blank design?',
+        message: 'What is in the editor now will be discarded. Projects you have saved are untouched.',
+        confirmLabel: 'Discard and start blank',
+        danger: true,
+      });
+      if (!discard) return;
+    }
     setStl(null);
     setStatus('idle');
     setOpenDesign(null);
     setConflict(null);
+    setOrigin(null);
     diskRef.current = null;
+    // Whatever was open is not what this is. Keeping the link would point the
+    // next Save at a project this text has nothing to do with.
+    projects.detach();
     applySource('', true);
-  }, [source, applySource]);
+  }, [source, applySource, projects, dialog]);
 
   // A file picked through the file input is a detached copy — the browser gives
   // no way back to it — so opening one drops any link the editor had rather than
   // leaving a stale name in the toolbar.
   const handleOpenSource = useCallback(
-    (text: string, _name: string) => {
+    (text: string, name: string) => {
       setOpenDesign(null);
       setConflict(null);
       diskRef.current = null;
+      projects.detach();
+      // The name is all that survives of the file. It says where the text came
+      // from, and it is what a later Save offers to call the project.
+      setOrigin({ kind: 'file', name });
       applySource(text, true);
     },
-    [applySource],
+    [applySource, projects],
   );
 
   // On load, pick the folder back up and re-open whatever design was open last
@@ -207,13 +239,19 @@ export default function App() {
     if (restoredRef.current) saveOpenDesign(openDesign);
   }, [openDesign]);
 
+  // Following a file on disk and working on a saved project are two different
+  // places for the work to live, and Save can only mean one of them. So picking a
+  // design leaves any project behind, exactly as opening a project leaves the
+  // designs/ link behind.
   const handleOpenDesign = useCallback(async (designPath: string) => {
     const text = await loadDesign(designPath);
+    projects.detach();
+    setOrigin(null);
     applySource(text, true);
     setConflict(null);
     setOpenDesign(designPath);
     setLinkNote(null);
-  }, [applySource]);
+  }, [applySource, projects]);
 
   // Follow the open design for as long as one is open. A change lands in the
   // editor on its own — but it does not render: which source gets built is the
@@ -274,14 +312,86 @@ export default function App() {
   // An example is a detached copy, like a file opened from disk: it drops any
   // link the editor had rather than leaving a stale name in the toolbar.
   const handleSelectExample = useCallback(
-    (exampleSource: string) => {
+    (exampleSource: string, name: string) => {
       setOpenDesign(null);
       setConflict(null);
       diskRef.current = null;
+      projects.detach();
+      setOrigin({ kind: 'example', name });
       applySource(exampleSource, true);
     },
-    [applySource],
+    [applySource, projects],
   );
+
+  // A name to offer when one is being asked for: whatever the work is already
+  // called, so the common case is a keypress rather than typing. Names have to
+  // be unique, so what is offered is a name the list will actually accept.
+  const suggestedName = useCallback(() => {
+    const base = projects.open
+      ? `${projects.open.name} copy`
+      : openDesign
+        ? bareName(openDesign)
+        : origin
+          ? bareName(origin.name)
+          : 'Untitled';
+    return freeName(projects.projects, base);
+  }, [projects, openDesign, origin]);
+
+  const handleSaveProjectAs = useCallback(async () => {
+    const name = await dialog.promptText({
+      title: 'Save as a new project',
+      label: 'Project name',
+      value: suggestedName(),
+      confirmLabel: 'Save',
+      validate: (candidate) =>
+        isNameTaken(projects.projects, candidate)
+          ? `A project called “${candidate}” already exists. Pick another name.`
+          : null,
+    });
+    if (!name) return;
+    if (await projects.saveAs(name, sourceRef.current)) setLinkNote(`Saved “${name}”`);
+  }, [projects, suggestedName, dialog]);
+
+  const handleSaveProject = useCallback(async () => {
+    if (!projects.open) {
+      await handleSaveProjectAs();
+      return;
+    }
+    const name = projects.open.name;
+    if (await projects.save(sourceRef.current)) setLinkNote(`Saved “${name}”`);
+  }, [projects, handleSaveProjectAs]);
+
+  // Opening a saved project is opening other work: like an example or a file from
+  // disk, it drops the designs/ link rather than leaving a stale name behind.
+  const handleOpenProject = useCallback(
+    async (id: string) => {
+      const project = await projects.load(id);
+      if (!project) return;
+      setProjectsDialogOpen(false);
+      setOpenDesign(null);
+      setConflict(null);
+      diskRef.current = null;
+      applySource(project.source, true);
+      setLinkNote(`Opened “${project.name}”`);
+    },
+    [projects, applySource],
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+        // The browser's own save dialog would offer to write the page to disk,
+        // which is never what Ctrl+S means in an editor.
+        event.preventDefault();
+        event.stopPropagation();
+        handleSaveProject();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [handleSaveProject]);
+
+  const projectModified = projects.open != null && source !== projects.open.savedSource;
 
   const stlAvailable = useMemo(() => stl != null, [stl]);
 
@@ -317,6 +427,15 @@ export default function App() {
         onOpenSource={handleOpenSource}
         onSaveScad={handleSaveScad}
         onDownloadStl={handleDownloadStl}
+        onSaveProject={handleSaveProject}
+        onSaveProjectAs={handleSaveProjectAs}
+        onOpenProjects={() => setProjectsDialogOpen(true)}
+        origin={origin}
+        projectName={projects.open?.name ?? null}
+        projectModified={projectModified}
+        projectsWritable={projects.canWrite}
+        projectError={projects.error}
+        onDismissProjectError={projects.dismissError}
         onSelectExample={handleSelectExample}
         shells={shells}
         designs={designs}
@@ -336,6 +455,9 @@ export default function App() {
           <ModelViewer stl={stl} />
         </div>
       </main>
+      {projectsDialogOpen && (
+        <ProjectsDialog onClose={() => setProjectsDialogOpen(false)} onOpen={handleOpenProject} />
+      )}
       <ConsolePanel
         open={consoleOpen}
         onToggle={() => setConsoleOpen((open) => !open)}
